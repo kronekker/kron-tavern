@@ -116,25 +116,31 @@
                 } @else {
                   <span class="badge member">User</span>
                 }
-                <span class="badge key-status" [class.has-key]="user.hasOpenRouterKey">
-                  {{ user.hasOpenRouterKey ? '🔑 API Key Set' : '⚠️ No API Key' }}
+                <span class="badge key-status" [class.has-key]="authService.hasWiroKey()">
+                  {{ authService.hasWiroKey() ? '🔑 Wiro Key Set' : '⚠️ No Wiro Key' }}
                 </span>
               </div>
             </div>
           </div>
 
-          <!-- OpenRouter BYOK Key Section -->
+          <!-- Wiro.ai BYOK Key Section -->
           <div class="byok-section">
             <div class="byok-title">
-              <strong>OpenRouter API Key (BYOK)</strong>
-              <p>Your API key is encrypted at rest using AES-256-GCM. It is only decrypted server-side when generating roleplay responses.</p>
+              <strong>Wiro.ai API Key (BYOK)</strong>
+              <p>
+                Your API key is encrypted at rest using AES-256-GCM. It is used to generate roleplay dialogues, 
+                synthesize character portraits (Text-to-Image / Image-to-Image), and animate expressions.
+                @if (user.isAdmin) {
+                  <span>As Administrator, your key is also used to synchronize the global model catalog.</span>
+                }
+              </p>
             </div>
 
             <div class="api-key-form">
               <input 
                 type="password" 
                 [(ngModel)]="apiKeyInput" 
-                placeholder="sk-or-v1-..." 
+                placeholder="Wiro API key..." 
                 class="key-input"
               />
               <button class="btn-save-key" (click)="saveApiKey()" [disabled]="loading() || !apiKeyInput.trim()">
@@ -142,9 +148,9 @@
               </button>
             </div>
 
-            @if (user.hasOpenRouterKey) {
+            @if (authService.hasWiroKey()) {
               <div class="key-actions-row">
-                <span class="key-note">✔ An encrypted OpenRouter key is active on your profile.</span>
+                <span class="key-note">✔ An encrypted Wiro.ai key is active on your profile.</span>
                 <button class="btn-remove-key" (click)="removeApiKey()" [disabled]="loading()">
                   Remove Key
                 </button>

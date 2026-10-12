@@ -106,9 +106,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
     // Apply incremental column migrations for existing databases
     this.ensureColumn('users', 'email', 'TEXT');
+    this.ensureColumn('users', 'wiro_key_encrypted', 'TEXT');
     this.ensureColumn('keyword_memories', 'session_id', 'TEXT');
     this.ensureColumn('keyword_memories', 'scope', "TEXT DEFAULT 'session'");
     this.ensureColumn('episodic_memories', 'scope', "TEXT DEFAULT 'session'");
+
+    try {
+      this.db.exec("UPDATE users SET wiro_key_encrypted = openrouter_key_encrypted WHERE wiro_key_encrypted IS NULL AND openrouter_key_encrypted IS NOT NULL;");
+    } catch {}
   }
 
   private ensureColumn(table: string, column: string, columnDef: string) {

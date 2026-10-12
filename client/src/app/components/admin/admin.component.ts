@@ -7,6 +7,8 @@ import {
   TableDataResponse,
   TableColumnInfo,
 } from '../../services/admin.service';
+import { ModelsService, ModelCatalogStats } from '../../services/models.service';
+import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-admin',
@@ -17,12 +19,16 @@ import {
 })
 export class AdminComponent implements OnInit {
   private adminService = inject(AdminService);
+  private modelsService = inject(ModelsService);
+  authService = inject(AuthService);
 
-  // Close event for modal / drawer
+  // Close & navigation events
   close = output<void>();
+  openModels = output<void>();
 
   // State signals
   stats = signal<DatabaseStats | null>(null);
+  modelsStats = signal<ModelCatalogStats | null>(null);
   tables = signal<TableSummary[]>([]);
   activeTab = signal<'overview' | 'tables'>('overview');
   selectedTable = signal<string>('users');
@@ -31,6 +37,7 @@ export class AdminComponent implements OnInit {
   pageSize = signal<number>(15);
 
   loading = signal<boolean>(false);
+  refreshingModels = signal<boolean>(false);
   actionMessage = signal<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   // Selected JSON payload for inspection
@@ -42,10 +49,56 @@ export class AdminComponent implements OnInit {
 
   refreshAll() {
     this.loadStats();
+    this.loadModelsStats();
     this.loadTables();
     if (this.selectedTable()) {
       this.loadTableData(this.selectedTable(), this.currentPage());
     }
+  }
+
+  loadModelsStats() {
+    this.modelsService.getStats().subscribe({
+      next: (res) => {
+        this.modelsStats.set(res);
+      },
+      error: (err) => {
+        console.error('Failed to load models stats', err);
+      },
+    });
+  }
+
+  refreshWiroModels() {
+    if (!this.authService.hasWiroKey()) {
+      this.actionMessage.set({
+        type: 'error',
+        text: 'Admin Wiro.ai API key is missing. Please save your personal Wiro key in your profile first.',
+      });
+      return;
+    }
+
+    this.refreshingModels.set(true);
+    this.actionMessage.set({
+      type: 'info',
+      text: 'Synchronizing model catalog from Wiro.ai (Tool/List)...',
+    });
+
+    this.modelsService.refreshCatalog().subscribe({
+      next: (res) => {
+        this.refreshingModels.set(false);
+        this.modelsStats.set(res.stats);
+        this.actionMessage.set({
+          type: 'success',
+          text: res.message || 'Models catalog refreshed successfully.',
+        });
+      },
+      error: (err) => {
+        this.refreshingModels.set(false);
+        this.actionMessage.set({
+          type: 'error',
+          text: err.error?.message || `Failed to refresh models: ${err.message}`,
+        });
+      },
+    });
   }
 
   loadStats() {

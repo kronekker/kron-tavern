@@ -7,6 +7,7 @@ export interface UserResponse {
   email: string;
   username: string;
   isAdmin: boolean;
+  hasWiroKey?: boolean;
   hasOpenRouterKey: boolean;
   settings: Record<string, any>;
   createdAt: string;
@@ -31,6 +32,7 @@ export class AuthService {
 
   isAuthenticated = computed(() => !!this.currentUser());
   isAdmin = computed(() => !!this.currentUser()?.isAdmin);
+  hasWiroKey = computed(() => !!(this.currentUser()?.hasWiroKey ?? this.currentUser()?.hasOpenRouterKey));
 
   constructor() {
     // If a token exists, silently verify and synchronize latest profile from server
@@ -95,12 +97,12 @@ export class AuthService {
     );
   }
 
-  saveOpenRouterKey(apiKey: string): Observable<{ success: boolean; message: string }> {
-    return this.http.put<{ success: boolean; message: string }>('/api/auth/openrouter-key', { apiKey }).pipe(
+  saveWiroKey(apiKey: string): Observable<{ success: boolean; message: string }> {
+    return this.http.put<{ success: boolean; message: string }>('/api/auth/wiro-key', { apiKey }).pipe(
       tap(() => {
         const u = this.currentUser();
         if (u) {
-          const updated = { ...u, hasOpenRouterKey: true };
+          const updated = { ...u, hasWiroKey: true, hasOpenRouterKey: true };
           this.currentUser.set(updated);
           try {
             localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
@@ -110,12 +112,12 @@ export class AuthService {
     );
   }
 
-  deleteOpenRouterKey(): Observable<{ success: boolean; message: string }> {
-    return this.http.delete<{ success: boolean; message: string }>('/api/auth/openrouter-key').pipe(
+  deleteWiroKey(): Observable<{ success: boolean; message: string }> {
+    return this.http.delete<{ success: boolean; message: string }>('/api/auth/wiro-key').pipe(
       tap(() => {
         const u = this.currentUser();
         if (u) {
-          const updated = { ...u, hasOpenRouterKey: false };
+          const updated = { ...u, hasWiroKey: false, hasOpenRouterKey: false };
           this.currentUser.set(updated);
           try {
             localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
@@ -123,6 +125,14 @@ export class AuthService {
         }
       }),
     );
+  }
+
+  saveOpenRouterKey(apiKey: string): Observable<{ success: boolean; message: string }> {
+    return this.saveWiroKey(apiKey);
+  }
+
+  deleteOpenRouterKey(): Observable<{ success: boolean; message: string }> {
+    return this.deleteWiroKey();
   }
 
   logout() {

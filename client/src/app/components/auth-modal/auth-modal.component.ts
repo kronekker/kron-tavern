@@ -92,10 +92,10 @@ export class AuthModalComponent implements OnInit {
   saveApiKey() {
     if (!this.apiKeyInput.trim()) return;
     this.loading.set(true);
-    this.authService.saveOpenRouterKey(this.apiKeyInput).subscribe({
+    this.authService.saveWiroKey(this.apiKeyInput).subscribe({
       next: () => {
         this.loading.set(false);
-        this.successMessage.set('OpenRouter API key encrypted and saved.');
+        this.successMessage.set('Wiro.ai API key encrypted and saved.');
         this.apiKeyInput = '';
       },
       error: (err) => {
@@ -107,10 +107,10 @@ export class AuthModalComponent implements OnInit {
 
   removeApiKey() {
     this.loading.set(true);
-    this.authService.deleteOpenRouterKey().subscribe({
+    this.authService.deleteWiroKey().subscribe({
       next: () => {
         this.loading.set(false);
-        this.successMessage.set('OpenRouter API key removed.');
+        this.successMessage.set('Wiro.ai API key removed.');
       },
       error: (err) => {
         this.loading.set(false);

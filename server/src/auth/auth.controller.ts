@@ -80,28 +80,44 @@ export class AuthController {
     return this.authService.getUserProfile(req.user.userId);
   }
 
-  @Put('openrouter-key')
+  @Put('wiro-key')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Save user personal OpenRouter API key (encrypted at rest)' })
+  @ApiOperation({ summary: 'Save user personal Wiro.ai API key (encrypted at rest)' })
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        apiKey: { type: 'string', example: 'sk-or-v1-...' },
+        apiKey: { type: 'string', example: 'wiro_api_key_...' },
       },
       required: ['apiKey'],
     },
   })
+  saveWiroKey(@Req() req: AuthenticatedRequest, @Body('apiKey') apiKey: string) {
+    return this.authService.setWiroKey(req.user.userId, apiKey);
+  }
+
+  @Delete('wiro-key')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove saved Wiro.ai API key' })
+  deleteWiroKey(@Req() req: AuthenticatedRequest) {
+    return this.authService.clearWiroKey(req.user.userId);
+  }
+
+  @Put('openrouter-key')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Alias: Save user API key' })
   saveApiKey(@Req() req: AuthenticatedRequest, @Body('apiKey') apiKey: string) {
-    return this.authService.setOpenRouterKey(req.user.userId, apiKey);
+    return this.authService.setWiroKey(req.user.userId, apiKey);
   }
 
   @Delete('openrouter-key')
   @UseGuards(AuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Remove saved OpenRouter API key' })
+  @ApiOperation({ summary: 'Alias: Remove saved API key' })
   deleteApiKey(@Req() req: AuthenticatedRequest) {
-    return this.authService.clearOpenRouterKey(req.user.userId);
+    return this.authService.clearWiroKey(req.user.userId);
   }
 }

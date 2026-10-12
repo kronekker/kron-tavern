@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   openrouter_key_encrypted TEXT,
+  wiro_key_encrypted TEXT,
   settings_json TEXT DEFAULT '{}',
   is_admin INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),

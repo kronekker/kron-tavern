@@ -8,6 +8,7 @@ export interface UserResponse {
   email: string;
   username: string;
   isAdmin: boolean;
+  hasWiroKey: boolean;
   hasOpenRouterKey: boolean;
   settings: Record<string, any>;
   createdAt: string;
@@ -71,6 +72,7 @@ export class AuthService {
         email: cleanEmail,
         username: cleanUsername,
         isAdmin: isAdmin === 1,
+        hasWiroKey: false,
         hasOpenRouterKey: false,
         settings: {},
         createdAt: now,
@@ -110,6 +112,8 @@ export class AuthService {
       settings = {};
     }
 
+    const hasKey = !!(user.wiro_key_encrypted || user.openrouter_key_encrypted);
+
     return {
       token,
       user: {
@@ -117,7 +121,8 @@ export class AuthService {
         email: user.email,
         username: user.username,
         isAdmin,
-        hasOpenRouterKey: !!user.openrouter_key_encrypted,
+        hasWiroKey: hasKey,
+        hasOpenRouterKey: hasKey,
         settings,
         createdAt: user.created_at,
       },
@@ -147,41 +152,59 @@ export class AuthService {
       settings = {};
     }
 
+    const hasKey = !!(user.wiro_key_encrypted || user.openrouter_key_encrypted);
+
     return {
       id: user.id,
       email: user.email,
       username: user.username,
       isAdmin: user.is_admin === 1,
-      hasOpenRouterKey: !!user.openrouter_key_encrypted,
+      hasWiroKey: hasKey,
+      hasOpenRouterKey: hasKey,
       settings,
       createdAt: user.created_at,
     };
   }
 
-  setOpenRouterKey(userId: string, apiKey: string): { success: boolean; message: string } {
+  setWiroKey(userId: string, apiKey: string): { success: boolean; message: string } {
     const db = this.dbService.getDb();
     const encrypted = this.cryptoService.encrypt(apiKey.trim());
 
-    db.prepare('UPDATE users SET openrouter_key_encrypted = ?, updated_at = datetime("now") WHERE id = ?').run(
+    db.prepare('UPDATE users SET wiro_key_encrypted = ?, openrouter_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      encrypted,
       encrypted,
       userId,
     );
 
-    return { success: true, message: 'OpenRouter API key encrypted and saved.' };
+    return { success: true, message: 'Wiro.ai API key encrypted and saved.' };
   }
 
-  clearOpenRouterKey(userId: string): { success: boolean; message: string } {
+  clearWiroKey(userId: string): { success: boolean; message: string } {
     const db = this.dbService.getDb();
-    db.prepare('UPDATE users SET openrouter_key_encrypted = NULL, updated_at = datetime("now") WHERE id = ?').run(
+    db.prepare('UPDATE users SET wiro_key_encrypted = NULL, openrouter_key_encrypted = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
       userId,
     );
-    return { success: true, message: 'OpenRouter API key removed.' };
+    return { success: true, message: 'Wiro.ai API key removed.' };
   }
 
-  getDecryptedOpenRouterKey(userId: string): string | null {
+  getDecryptedWiroKey(userId: string): string | null {
     const db = this.dbService.getDb();
-    const row = db.prepare('SELECT openrouter_key_encrypted FROM users WHERE id = ?').get(userId) as any;
-    if (!row || !row.openrouter_key_encrypted) return null;
-    return this.cryptoService.decrypt(row.openrouter_key_encrypted);
+    const row = db.prepare('SELECT wiro_key_encrypted, openrouter_key_encrypted FROM users WHERE id = ?').get(userId) as any;
+    if (!row) return null;
+    const key = row.wiro_key_encrypted || row.openrouter_key_encrypted;
+    if (!key) return null;
+    return this.cryptoService.decrypt(key);
+  }
+
+  setOpenRouterKey(userId: string, apiKey: string) {
+    return this.setWiroKey(userId, apiKey);
+  }
+
+  clearOpenRouterKey(userId: string) {
+    return this.clearWiroKey(userId);
+  }
+
+  getDecryptedOpenRouterKey(userId: string) {
+    return this.getDecryptedWiroKey(userId);
   }
 }

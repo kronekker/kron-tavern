@@ -20,7 +20,9 @@
 Key defining traits:
 * **Self-Contained Deployment:** Single-node runtime utilizing embedded SQLite (via `better-sqlite3` and `sqlite-vec`) for both relational and vector data, and local in-process embeddings via `@xenova/transformers`. No external database servers or Docker containers required.
 * **Full Prompt & Retrieval Auditability:** Users can inspect the exact prompt assembly, token count, raw system instructions, and exact vector similarity scores for injected memories for any conversation turn.
-* **Model Playground & A/B Testing:** Direct comparative evaluation of two different OpenRouter models responding to the same conversational turn, allowing users to select the canonical path forward.
+* **Model Playground & A/B Testing:** Direct comparative evaluation of two different Wiro.ai models responding to the same conversational turn, allowing users to select the canonical path forward.
+* **Multimodal Generation (Wiro.ai):** Unified access to Chat LLMs, Text-to-Image (character portraits), Image-to-Image (character poses/scenes), and Video animation models.
+* **Shared Admin-Maintained Model Catalog:** Admin retrieves and refreshes available models via Wiro.ai (`Tool/List`), persisting them as a shared local JSON catalog (`data/wiro-models.json`) for all users to select from.
 * **Advanced Context Engineering:** Configurable context compression algorithms with user-defined percent-fill triggers and smart defaults.
 * **Zero-CORS Runtime Modes:** Smooth development ergonomics and a single-port production distribution where Node serves the Angular SPA.
 
@@ -34,6 +36,7 @@ Key defining traits:
 │  - Mobile-Native First, Fluid Desktop Expansion                        │
 │  - Immersive Chat Timeline (Markdown, Dialogue/Action Styling)        │
 │  - A/B Model Split/Comparison View & Selection                         │
+│  - Multimodal Model Browser (Chat, Text-to-Image, Image-to-Image)      │
 │  - Slide-Over Drawers: Nav, Turn Inspector, Settings, Persona Switch   │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ REST (OpenAPI/Swagger) + SSE
@@ -45,7 +48,8 @@ Key defining traits:
 │  - Local In-Process Embedding Engine (@xenova/transformers ONNX)       │
 │  - Context Manager & Compression Engine (Percent-fill triggers)        │
 │  - Memory Pipeline: Keyword Triggering + SQLite Vector Search          │
-│  - OpenRouter Streaming Gateway & Audit Logger                         │
+│  - Wiro.ai Gateway (Chat LLMs, Image Gen & Video) & Audit Logger       │
+│  - Shared Model Catalog Manager (data/wiro-models.json)                │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │
                      ┌──────────────┴──────────────┐
@@ -225,7 +229,7 @@ The Turn Inspector visualizes the context allocation:
 ## 9. Traceability: The Turn Inspector
 
 Every generated message includes an **Inspect Turn** action in its menu, displaying:
-1. **Raw API Request:** Full JSON payload sent to OpenRouter (exact system, user, and assistant array).
+1. **Raw API Request:** Full JSON payload sent to Wiro.ai (exact system, user, and assistant array).
 2. **Memory Breakdown:**
    * Triggered keyword entries (showing scope: session, character, or global).
    * Retrieved semantic memories with similarity scores.
@@ -238,7 +242,7 @@ Every generated message includes an **Inspect Turn** action in its menu, display
 
 ```sql
 -- Identity & Personas
-users (id, email, username, password_hash, openrouter_key_encrypted, settings_json, is_admin, created_at, updated_at)
+users (id, email, username, password_hash, wiro_key_encrypted, settings_json, is_admin, created_at, updated_at)
 personas (id, user_id, name, avatar_url, description, speech_style, is_default, created_at, updated_at)
 
 -- Characters
@@ -285,7 +289,7 @@ kron-tavern/
 │   ├── src/
 │   │   ├── auth/                # JWT auth & BYOK encrypted keys
 │   │   ├── characters/          # Character & persona CRUD
-│   │   ├── chat/                # OpenRouter gateway, A/B engine & SSE streaming
+│   │   ├── chat/                # Wiro.ai gateway, multimodal generation, A/B engine & SSE streaming
 │   │   ├── context/             # Context budgeter & compression algorithms
 │   │   ├── memory/              # Keyword matcher + local embedding & sqlite-vec
 │   │   ├── trace/               # Audit logger & Turn Inspector API

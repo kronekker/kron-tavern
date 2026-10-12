@@ -1,0 +1,361 @@
+<div class="catalog-backdrop" (click)="close.emit()">
+  <div class="catalog-modal" (click)="$event.stopPropagation()">
+    
+    <!-- Modal Header -->
+    <header class="catalog-header">
+      <div class="header-left">
+        <div class="header-icon">🤖</div>
+        <div>
+          <h2>Wiro.ai Model Catalog</h2>
+          <span class="sub-text">
+            Shared Multimodal Intelligence: Chat LLMs, Text-to-Image, Image-to-Image & Video
+          </span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        @if (authService.isAdmin()) {
+          <button 
+            class="btn-sync" 
+            (click)="refreshFromWiro()" 
+            [disabled]="refreshing() || loading()"
+            title="Refresh models from api.wiro.ai using Admin API key">
+            <span>{{ refreshing() ? '🔄 Syncing...' : '🔄 Refresh from Wiro.ai' }}</span>
+          </button>
+        }
+        <button class="btn-close" (click)="close.emit()" title="Close">✕</button>
+      </div>
+    </header>
+
+    <!-- Notification Banner -->
+    @if (notification(); as notif) {
+      <div class="notif-banner" [class]="notif.type">
+        <span>{{ notif.message }}</span>
+        <button class="btn-dismiss" (click)="notification.set(null)">✕</button>
+      </div>
+    }
+
+    <!-- Toolbar: Stats & Category Filters -->
+    <div class="catalog-toolbar">
+      
+      <!-- Stats Metadata Bar -->
+      <div class="stats-bar">
+        <span class="stat-pill">
+          📦 <strong>{{ stats()?.total || 0 }}</strong> models cataloged
+        </span>
+        <span class="stat-pill">
+          🕒 Synced: <strong>{{ formatDate(stats()?.lastUpdated) }}</strong>
+        </span>
+        @if (authService.isAdmin() && !authService.hasWiroKey()) {
+          <span class="stat-pill warning">
+            ⚠️ Admin Wiro API key not set in Profile
+          </span>
+        }
+      </div>
+
+      <!-- Category Filter Tabs -->
+      <div class="filter-tabs">
+        <button 
+          class="filter-chip" 
+          [class.active]="activeFilter() === 'all'" 
+          (click)="setFilter('all')">
+          <span>🌐 All</span>
+          <span class="chip-count">{{ stats()?.total || 0 }}</span>
+        </button>
+
+        <button 
+          class="filter-chip" 
+          [class.active]="activeFilter() === 'chat'" 
+          (click)="setFilter('chat')">
+          <span>💬 Chat (LLM)</span>
+          <span class="chip-count">{{ stats()?.breakdown?.['chat'] || 0 }}</span>
+        </button>
+
+        <button 
+          class="filter-chip" 
+          [class.active]="activeFilter() === 'text-to-image'" 
+          (click)="setFilter('text-to-image')">
+          <span>🎨 Text-to-Image</span>
+          <span class="chip-count">{{ stats()?.breakdown?.['text-to-image'] || 0 }}</span>
+        </button>
+
+        <button 
+          class="filter-chip" 
+          [class.active]="activeFilter() === 'image-to-image'" 
+          (click)="setFilter('image-to-image')">
+          <span>🖼️ Image-to-Image</span>
+          <span class="chip-count">{{ stats()?.breakdown?.['image-to-image'] || 0 }}</span>
+        </button>
+
+        <button 
+          class="filter-chip" 
+          [class.active]="activeFilter() === 'video'" 
+          (click)="setFilter('video')">
+          <span>🎬 Video</span>
+          <span class="chip-count">{{ stats()?.breakdown?.['video'] || 0 }}</span>
+        </button>
+
+        <button 
+          class="filter-chip" 
+          [class.active]="activeFilter() === 'voice'" 
+          (click)="setFilter('voice')">
+          <span>🎙️ Voice</span>
+          <span class="chip-count">{{ stats()?.breakdown?.['voice'] || 0 }}</span>
+        </button>
+
+        <button 
+          class="filter-chip" 
+          [class.active]="activeFilter() === 'other'" 
+          (click)="setFilter('other')">
+          <span>⚙️ Other</span>
+          <span class="chip-count">{{ stats()?.breakdown?.['other'] || 0 }}</span>
+        </button>
+      </div>
+
+      <!-- Search Input -->
+      <div class="search-row">
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            [(ngModel)]="searchQuery" 
+            (ngModelChange)="onSearchChange()" 
+            placeholder="Search by title, provider (e.g. ByteDance, OpenAI), slug, or description..." 
+          />
+          @if (searchQuery()) {
+            <button class="btn-clear" (click)="clearSearch()">✕</button>
+          }
+        </div>
+        <div class="results-count">
+          Showing <strong>{{ filteredModels().length }}</strong> models
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Main Catalog Grid Area -->
+    <div class="catalog-content">
+      
+      @if (loading()) {
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <span>Loading Wiro.ai models catalog...</span>
+        </div>
+      } @else if (filteredModels().length === 0) {
+        <div class="empty-state">
+          <span class="empty-icon">🔍</span>
+          <h3>No models found</h3>
+          <p>Try clearing your search query or switching category filters.</p>
+          @if (searchQuery()) {
+            <button class="btn-reset" (click)="clearSearch()">Clear Search</button>
+          }
+        </div>
+      } @else {
+        
+        <div class="models-grid">
+          @for (model of paginatedModels(); track model.id) {
+            <div class="model-card" (click)="inspectModel(model)">
+              
+              <!-- Card Cover Image -->
+              <div class="card-cover">
+                @if (model.image) {
+                  <img [src]="model.image" [alt]="model.title" loading="lazy" />
+                } @else {
+                  <div class="cover-fallback">
+                    <span>{{ model.type === 'chat' ? '💬' : (model.type === 'video' ? '🎬' : '🎨') }}</span>
+                  </div>
+                }
+                <div class="cover-badges">
+                  <span class="badge category-badge" [class]="getCategoryBadgeClass(model.type)">
+                    {{ getCategoryLabel(model.type) }}
+                  </span>
+                  @if (model.computingtime) {
+                    <span class="badge time-badge" title="Estimated computing time">
+                      ⏱️ {{ model.computingtime }}
+                    </span>
+                  }
+                </div>
+              </div>
+
+              <!-- Card Body -->
+              <div class="card-body">
+                <div class="provider-row">
+                  <span class="provider-pill">{{ model.slugowner }}</span>
+                  <span class="model-id">#{{ model.id }}</span>
+                </div>
+
+                <h4 class="model-title" [title]="model.title">{{ model.title }}</h4>
+
+                <p class="model-desc">{{ model.description }}</p>
+
+                <div class="card-footer">
+                  <span class="slug-tag">{{ model.slug }}</span>
+                  <button class="btn-inspect" (click)="$event.stopPropagation(); inspectModel(model)">
+                    Details ➔
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          }
+        </div>
+
+        <!-- Pagination Controls -->
+        @if (totalPages() > 1) {
+          <div class="pagination-bar">
+            <button 
+              class="page-btn" 
+              [disabled]="currentPage() <= 1" 
+              (click)="currentPage.set(currentPage() - 1)">
+              ◀ Previous
+            </button>
+            <span class="page-indicator">
+              Page <strong>{{ currentPage() }}</strong> of <strong>{{ totalPages() }}</strong>
+            </span>
+            <button 
+              class="page-btn" 
+              [disabled]="currentPage() >= totalPages()" 
+              (click)="currentPage.set(currentPage() + 1)">
+              Next ▶
+            </button>
+          </div>
+        }
+
+      }
+
+    </div>
+
+  </div>
+
+  <!-- Model Detail Inspector Drawer / Modal -->
+  @if (selectedModelId()) {
+    <div class="detail-backdrop" (click)="closeDetails()">
+      <div class="detail-drawer" (click)="$event.stopPropagation()">
+        
+        <header class="detail-header">
+          <div class="detail-title-group">
+            <span class="badge category-badge" [class]="getCategoryBadgeClass(selectedModelDetails()?.type || 'other')">
+              {{ getCategoryLabel(selectedModelDetails()?.type || 'other') }}
+            </span>
+            <h3>{{ selectedModelDetails()?.title || 'Model Details' }}</h3>
+            <span class="detail-slug">{{ selectedModelDetails()?.slugowner }}/{{ selectedModelDetails()?.slugproject }}</span>
+          </div>
+          <button class="btn-close" (click)="closeDetails()">✕</button>
+        </header>
+
+        <div class="detail-body">
+          @if (loadingDetails()) {
+            <div class="loading-state">
+              <div class="spinner"></div>
+              <span>Fetching model schema and parameters...</span>
+            </div>
+          } @else if (selectedModelDetails(); as detail) {
+
+            <!-- Media Preview / Samples -->
+            @if (detail.image || (detail.samples && detail.samples.length > 0)) {
+              <div class="detail-section">
+                <h4>Visual Showcase & Samples</h4>
+                <div class="samples-carousel">
+                  @if (detail.image) {
+                    <img [src]="detail.image" class="sample-img cover" alt="Cover" />
+                  }
+                  @for (s of detail.samples || []; track s) {
+                    <img [src]="s" class="sample-img" alt="Sample" />
+                  }
+                </div>
+              </div>
+            }
+
+            <!-- Metadata Specs -->
+            <div class="detail-section">
+              <h4>Model Specifications</h4>
+              <div class="spec-grid">
+                <div class="spec-item">
+                  <span class="spec-label">Model ID</span>
+                  <span class="spec-value">{{ detail.id }}</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Provider</span>
+                  <span class="spec-value">{{ detail.slugowner }}</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Computing Time</span>
+                  <span class="spec-value">{{ detail.computingtime || 'Real-time' }}</span>
+                </div>
+                <div class="spec-item">
+                  <span class="spec-label">Category Type</span>
+                  <span class="spec-value">{{ detail.type || 'tool' }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pricing Breakdown -->
+            @if (parseDynamicPrice(detail.dynamicprice); as prices) {
+              @if (prices.length > 0) {
+                <div class="detail-section">
+                  <h4>Pricing Rates (Wiro.ai)</h4>
+                  <div class="pricing-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Configuration</th>
+                          <th>Method</th>
+                          <th>Price ($)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (p of prices; track $index) {
+                          <tr>
+                            <td>{{ p.inputs ? (p.inputs | json) : 'Standard' }}</td>
+                            <td><code>{{ p.priceMethod }}</code></td>
+                            <td class="price-val">${{ p.price }}</td>
+                          </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              }
+            }
+
+            <!-- Description & Readme -->
+            <div class="detail-section">
+              <h4>Description & Capabilities</h4>
+              <p class="detail-desc-text">{{ detail.description }}</p>
+              @if (detail.readme) {
+                <div class="readme-box">
+                  <pre>{{ detail.readme }}</pre>
+                </div>
+              }
+            </div>
+
+            <!-- Categories / Tags -->
+            @if (detail.categories && detail.categories.length > 0) {
+              <div class="detail-section">
+                <h4>Categories & Capabilities</h4>
+                <div class="tags-row">
+                  @for (cat of detail.categories; track cat) {
+                    <span class="tag-pill">{{ cat }}</span>
+                  }
+                </div>
+              </div>
+            }
+
+            <!-- Parameters Schema (if present) -->
+            @if (detail.parameters) {
+              <div class="detail-section">
+                <h4>Input Parameter Schema</h4>
+                <div class="parameters-box">
+                  <pre>{{ detail.parameters | json }}</pre>
+                </div>
+              </div>
+            }
+
+          }
+        </div>
+
+      </div>
+    </div>
+  }
+
+</div>

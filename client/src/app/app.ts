@@ -2,12 +2,13 @@ import { Component, signal, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AdminComponent } from './components/admin/admin.component';
 import { AuthModalComponent } from './components/auth-modal/auth-modal.component';
+import { ModelCatalogComponent } from './components/model-catalog/model-catalog.component';
 import { AuthService } from './services/auth.service';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, AdminComponent, AuthModalComponent],
+  imports: [CommonModule, AdminComponent, AuthModalComponent, ModelCatalogComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -17,6 +18,7 @@ export class App {
 
   showAdmin = signal<boolean>(false);
   showAuth = signal<boolean>(false);
+  showModels = signal<boolean>(false);
 
   toggleAdmin() {
     this.showAdmin.update((v) => !v);
@@ -24,5 +26,9 @@ export class App {
 
   toggleAuth() {
     this.showAuth.update((v) => !v);
+  }
+
+  toggleModels() {
+    this.showModels.update((v) => !v);
   }
 }

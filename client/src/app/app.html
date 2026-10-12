@@ -10,6 +10,10 @@
     </div>
 
     <div class="nav-actions">
+      <button class="nav-btn secondary" (click)="toggleModels()" title="Browse Multimodal AI Models">
+        <span>🤖 Models</span>
+      </button>
+
       <a href="/api/docs" target="_blank" class="nav-btn secondary" title="Open Swagger API Documentation">
         <span>📚 Swagger</span>
       </a>
@@ -53,6 +57,14 @@
 
         <div class="features-list">
           <div class="feature-item">
+            <span class="icon">🤖</span>
+            <div>
+              <strong>Wiro.ai Multimodal Intelligence</strong>
+              <p>Shared model catalog for Chat LLMs, portrait synthesis (Text-to-Image), expression poses (Image-to-Image), and video animation.</p>
+            </div>
+          </div>
+
+          <div class="feature-item">
             <span class="icon">👤</span>
             <div>
               <strong>User Scopes & Entitlements</strong>
@@ -78,6 +90,10 @@
         </div>
 
         <div class="cta-actions">
+          <button class="btn-cta secondary" (click)="toggleModels()">
+            🤖 Browse AI Models Catalog
+          </button>
+
           @if (authService.isAuthenticated()) {
             @if (authService.isAdmin()) {
               <button class="btn-cta" (click)="toggleAdmin()">
@@ -100,11 +116,16 @@
 
   <!-- Admin Popup / Modal -->
   @if (showAdmin() && authService.isAdmin()) {
-    <app-admin (close)="showAdmin.set(false)" />
+    <app-admin (close)="showAdmin.set(false)" (openModels)="showModels.set(true)" />
   }
 
   <!-- Auth Modal -->
   @if (showAuth()) {
     <app-auth-modal (close)="showAuth.set(false)" (openAdmin)="showAdmin.set(true)" />
+  }
+
+  <!-- Model Catalog Modal -->
+  @if (showModels()) {
+    <app-model-catalog (close)="showModels.set(false)" />
   }
 </div>

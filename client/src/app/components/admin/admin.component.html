@@ -89,6 +89,64 @@
             </div>
           </div>
 
+          <!-- Wiro.ai Multimodal Models Catalog -->
+          <div class="section-card">
+            <div class="section-header-row">
+              <div>
+                <h3>🤖 Wiro.ai Multimodal Model Catalog</h3>
+                <p class="section-desc">
+                  Shared AI model catalog for Chat LLMs, Text-to-Image, Image-to-Image, and Video generation.
+                </p>
+              </div>
+              <div class="sync-actions">
+                <button 
+                  class="btn-action primary" 
+                  (click)="refreshWiroModels()" 
+                  [disabled]="refreshingModels() || loading()">
+                  {{ refreshingModels() ? '🔄 Syncing...' : '🔄 Sync from Wiro.ai' }}
+                </button>
+                <button class="btn-action secondary" (click)="openModels.emit(); close.emit()">
+                  🤖 Open Catalog
+                </button>
+              </div>
+            </div>
+
+            @if (modelsStats(); as mStats) {
+              <div class="models-stats-strip">
+                <div class="mstat-item">
+                  <span class="mstat-label">Total Cataloged</span>
+                  <span class="mstat-val">{{ mStats.total }}</span>
+                </div>
+                <div class="mstat-item">
+                  <span class="mstat-label">💬 Chat LLM</span>
+                  <span class="mstat-val">{{ mStats.breakdown['chat'] || 0 }}</span>
+                </div>
+                <div class="mstat-item">
+                  <span class="mstat-label">🎨 Text-to-Image</span>
+                  <span class="mstat-val">{{ mStats.breakdown['text-to-image'] || 0 }}</span>
+                </div>
+                <div class="mstat-item">
+                  <span class="mstat-label">🖼️ Image-to-Image</span>
+                  <span class="mstat-val">{{ mStats.breakdown['image-to-image'] || 0 }}</span>
+                </div>
+                <div class="mstat-item">
+                  <span class="mstat-label">🎬 Video</span>
+                  <span class="mstat-val">{{ mStats.breakdown['video'] || 0 }}</span>
+                </div>
+                <div class="mstat-item">
+                  <span class="mstat-label">🎙️ Voice</span>
+                  <span class="mstat-val">{{ mStats.breakdown['voice'] || 0 }}</span>
+                </div>
+              </div>
+            }
+
+            @if (!authService.hasWiroKey()) {
+              <div class="key-warning-box">
+                ⚠️ Admin Wiro.ai API key is not yet configured in your profile. Please save your API key via the Profile modal before running sync.
+              </div>
+            }
+          </div>
+
           <!-- Tables Summary -->
           <div class="section-card">
             <h3>Registered Tables & Row Counts</h3>

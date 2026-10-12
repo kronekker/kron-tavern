@@ -221,6 +221,62 @@
     font-size: 0.8rem;
     color: #94a3b8;
   }
+
+  .section-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1rem;
+
+    .section-desc {
+      margin-bottom: 0;
+    }
+
+    .sync-actions {
+      display: flex;
+      gap: 0.5rem;
+      white-space: nowrap;
+    }
+  }
+
+  .models-stats-strip {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 0.6rem;
+    margin-bottom: 0.75rem;
+
+    .mstat-item {
+      background: #0f172a;
+      border: 1px solid #334155;
+      border-radius: 6px;
+      padding: 0.6rem 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+
+      .mstat-label {
+        font-size: 0.7rem;
+        color: #94a3b8;
+      }
+
+      .mstat-val {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #f8fafc;
+      }
+    }
+  }
+
+  .key-warning-box {
+    background: rgba(180, 83, 9, 0.2);
+    border: 1px solid #b45309;
+    color: #fbbf24;
+    padding: 0.6rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    margin-top: 0.5rem;
+  }
 }
 
 .actions-row {
