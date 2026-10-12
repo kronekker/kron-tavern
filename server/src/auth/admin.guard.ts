@@ -32,11 +32,12 @@ export class AdminGuard implements CanActivate {
       throw new UnauthorizedException('Token is invalid or expired.');
     }
 
-    if (!payload.isAdmin) {
+    const userRow = db.prepare('SELECT is_admin FROM users WHERE id = ?').get(payload.userId) as any;
+    if (!userRow || userRow.is_admin !== 1) {
       throw new ForbiddenException('Admin entitlements required for this action.');
     }
 
-    request.user = payload;
+    request.user = { ...payload, isAdmin: true };
     return true;
   }
 }

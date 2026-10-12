@@ -232,7 +232,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
     const insertUser = this.db.prepare(`
       INSERT OR IGNORE INTO users (id, email, username, password_hash, is_admin, settings_json, created_at)
-      VALUES (?, ?, ?, ?, 1, ?, ?)
+      VALUES (?, ?, ?, ?, 0, ?, ?)
     `);
 
     const insertPersona = this.db.prepare(`

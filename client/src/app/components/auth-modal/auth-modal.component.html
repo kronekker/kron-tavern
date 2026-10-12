@@ -152,6 +152,14 @@
             }
           </div>
 
+          @if (user.isAdmin) {
+            <div class="admin-quick-action">
+              <button class="btn-open-admin" (click)="openAdmin.emit(); close.emit()">
+                ⚙️ Open Database & Admin Panel
+              </button>
+            </div>
+          }
+
           <div class="logout-footer">
             <button class="btn-logout" (click)="authService.logout(); close.emit()">
               Sign Out

@@ -13,6 +13,7 @@ import { AuthService } from '../../services/auth.service';
 export class AuthModalComponent implements OnInit {
   authService = inject(AuthService);
   close = output<void>();
+  openAdmin = output<void>();
 
   // State
   mode = signal<'login' | 'register'>('login');

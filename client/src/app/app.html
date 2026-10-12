@@ -27,7 +27,7 @@
           <span class="avatar-dot">👤</span>
           <span class="user-name">{{ authService.currentUser()?.username }}</span>
           @if (authService.isAdmin()) {
-            <span class="admin-badge">👑</span>
+            <span class="admin-badge">👑 Admin</span>
           }
         </button>
       } @else {
@@ -105,6 +105,6 @@
 
   <!-- Auth Modal -->
   @if (showAuth()) {
-    <app-auth-modal (close)="showAuth.set(false)" />
+    <app-auth-modal (close)="showAuth.set(false)" (openAdmin)="showAdmin.set(true)" />
   }
 </div>

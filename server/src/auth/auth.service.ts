@@ -42,9 +42,11 @@ export class AuthService {
       throw new ConflictException('An account with this email or username already exists.');
     }
 
-    // First registered user is automatically Admin!
-    const userCountRow = db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number };
-    const isAdmin = userCountRow.count === 0 ? 1 : 0;
+    // First registered real user (ignoring demo fixtures) is automatically Admin!
+    const adminCountRow = db
+      .prepare("SELECT COUNT(*) AS count FROM users WHERE is_admin = 1 AND id NOT LIKE 'user_demo_%'")
+      .get() as { count: number };
+    const isAdmin = adminCountRow.count === 0 ? 1 : 0;
 
     const id = `user_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
     const passwordHash = this.cryptoService.hashPassword(password);
@@ -124,9 +126,18 @@ export class AuthService {
 
   getUserProfile(userId: string): UserResponse {
     const db = this.dbService.getDb();
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
+    let user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
     if (!user) {
       throw new NotFoundException('User not found.');
+    }
+
+    // Self-healing: if no real admin exists in instance, automatically promote this real user
+    const adminCountRow = db
+      .prepare("SELECT COUNT(*) AS count FROM users WHERE is_admin = 1 AND id NOT LIKE 'user_demo_%'")
+      .get() as { count: number };
+    if (adminCountRow.count === 0 && !userId.startsWith('user_demo_')) {
+      db.prepare('UPDATE users SET is_admin = 1 WHERE id = ?').run(userId);
+      user.is_admin = 1;
     }
 
     let settings = {};
