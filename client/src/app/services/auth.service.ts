@@ -23,18 +23,26 @@ export interface AuthResponse {
 export class AuthService {
   private http = inject(HttpClient);
   private readonly TOKEN_KEY = 'kron_tavern_token';
+  private readonly USER_KEY = 'kron_tavern_user';
 
-  // Reactive state signals
+  // Synchronously hydrated state from localStorage (zero flash / instant restore)
   token = signal<string | null>(this.getStoredToken());
-  currentUser = signal<UserResponse | null>(null);
+  currentUser = signal<UserResponse | null>(this.getStoredUser());
 
   isAuthenticated = computed(() => !!this.currentUser());
   isAdmin = computed(() => !!this.currentUser()?.isAdmin);
 
   constructor() {
+    // If a token exists, silently verify and synchronize latest profile from server
     if (this.token()) {
       this.fetchProfile().subscribe({
-        error: () => this.logout(),
+        error: (err) => {
+          // Only invalidate local session if token is actively rejected (401 / 403)
+          if (err.status === 401 || err.status === 403) {
+            console.warn('Session expired or invalid, logging out.');
+            this.logout();
+          }
+        },
       });
     }
   }
@@ -42,6 +50,15 @@ export class AuthService {
   private getStoredToken(): string | null {
     try {
       return localStorage.getItem(this.TOKEN_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  private getStoredUser(): UserResponse | null {
+    try {
+      const raw = localStorage.getItem(this.USER_KEY);
+      return raw ? (JSON.parse(raw) as UserResponse) : null;
     } catch {
       return null;
     }
@@ -71,6 +88,9 @@ export class AuthService {
     return this.http.get<UserResponse>('/api/auth/me').pipe(
       tap((user) => {
         this.currentUser.set(user);
+        try {
+          localStorage.setItem(this.USER_KEY, JSON.stringify(user));
+        } catch {}
       }),
     );
   }
@@ -80,7 +100,11 @@ export class AuthService {
       tap(() => {
         const u = this.currentUser();
         if (u) {
-          this.currentUser.set({ ...u, hasOpenRouterKey: true });
+          const updated = { ...u, hasOpenRouterKey: true };
+          this.currentUser.set(updated);
+          try {
+            localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
+          } catch {}
         }
       }),
     );
@@ -91,7 +115,11 @@ export class AuthService {
       tap(() => {
         const u = this.currentUser();
         if (u) {
-          this.currentUser.set({ ...u, hasOpenRouterKey: false });
+          const updated = { ...u, hasOpenRouterKey: false };
+          this.currentUser.set(updated);
+          try {
+            localStorage.setItem(this.USER_KEY, JSON.stringify(updated));
+          } catch {}
         }
       }),
     );
@@ -102,6 +130,7 @@ export class AuthService {
     this.currentUser.set(null);
     try {
       localStorage.removeItem(this.TOKEN_KEY);
+      localStorage.removeItem(this.USER_KEY);
     } catch {}
   }
 
@@ -110,6 +139,7 @@ export class AuthService {
     this.currentUser.set(user);
     try {
       localStorage.setItem(this.TOKEN_KEY, token);
+      localStorage.setItem(this.USER_KEY, JSON.stringify(user));
     } catch {}
   }
 }
