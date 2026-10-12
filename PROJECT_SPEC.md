@@ -70,11 +70,11 @@ To eliminate Cross-Origin Resource Sharing (CORS) complexity and ensure seamless
 
 ```
 [Development Mode]
-  Angular CLI (Port 4200) --(proxy.conf.json /api)--> Node Backend (Port 3000)
+  Angular CLI (Port 4201) --(proxy.conf.json /api)--> Node Backend (Port 3004)
   * Hot reload active for both apps, zero CORS errors via dev proxy.
 
 [Production / Unified Host Mode]
-  Node Backend (Port 3000)
+  Node Backend (Port 3004, or process.env.PORT)
     ├── GET /api/*         -> NestJS REST Controllers & SSE Streams
     ├── GET /api/docs      -> Swagger Interactive UI
     └── GET /*             -> Static Angular SPA Build (dist/client/browser)
@@ -82,12 +82,12 @@ To eliminate Cross-Origin Resource Sharing (CORS) complexity and ensure seamless
 ```
 
 1. **Development Mode (`npm run dev`):**
-   * Backend runs on port `3000` (with TS watch/reload).
-   * Frontend runs on port `4200` via Angular dev server.
-   * Angular uses a configured `proxy.conf.json` that forwards all `/api` requests to `http://localhost:3000`. The browser only ever talks to port `4200`, preventing CORS issues during development.
+   * Backend runs on port `3004` (configurable via `PORT`, default 3004) with TS watch/reload.
+   * Frontend runs on port `4201` via Angular dev server (`ng serve --port 4201`).
+   * Angular uses a configured `proxy.conf.json` that forwards all `/api` requests to `http://localhost:3004`. The browser only ever talks to port `4201`, preventing CORS issues during development.
 2. **Production Mode (`npm run build` && `npm start`):**
    * Angular builds production artifacts into the backend's static assets directory (`dist/client`).
-   * The Node.js backend serves both the API endpoints (`/api/...`) and the Angular SPA static bundle (with SPA index.html fallback) from the **same single port**.
+   * The Node.js backend serves both the API endpoints (`/api/...`) and the Angular SPA static bundle (with SPA index.html fallback) from the **same single port (3004)**.
    * Single-command deployment with zero CORS overhead or reverse proxy requirement.
 
 ---
@@ -256,7 +256,7 @@ kron-tavern/
 │   │   │   ├── services/        # API client, SSE streaming service, state store
 │   │   │   └── pages/           # Chat room, Character gallery, Persona manager
 │   │   └── styles.scss          # Mobile-first styles / Tailwind
-│   ├── proxy.conf.json          # Dev proxy aliasing /api to backend (port 3000)
+│   ├── proxy.conf.json          # Dev proxy aliasing /api to backend (port 3004)
 │   ├── angular.json
 │   └── package.json
 └── uploads/                     # Local storage for avatars & media
