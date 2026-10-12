@@ -1,0 +1,167 @@
+<div class="auth-backdrop" (click)="close.emit()">
+  <div class="auth-modal" (click)="$event.stopPropagation()">
+    
+    <!-- Modal Header -->
+    <header class="auth-header">
+      <div class="header-left">
+        <span class="auth-icon">{{ authService.isAuthenticated() ? '👤' : '🔐' }}</span>
+        <h3>{{ authService.isAuthenticated() ? 'User Profile & API Key' : (mode() === 'login' ? 'Sign In' : 'Create Account') }}</h3>
+      </div>
+      <button class="btn-close" (click)="close.emit()">✕</button>
+    </header>
+
+    <!-- First User Admin Notification -->
+    @if (!hasUsers() && !authService.isAuthenticated()) {
+      <div class="first-user-banner">
+        <span class="crown">👑</span>
+        <div>
+          <strong>Initial Admin Setup</strong>
+          <p>No accounts exist yet. The first user to register will be granted full Administrator entitlements.</p>
+        </div>
+      </div>
+    }
+
+    <!-- Alerts -->
+    @if (errorMessage(); as err) {
+      <div class="alert error">{{ err }}</div>
+    }
+    @if (successMessage(); as msg) {
+      <div class="alert success">{{ msg }}</div>
+    }
+
+    <!-- Content: If NOT authenticated -> Login or Register -->
+    @if (!authService.isAuthenticated()) {
+      
+      <!-- Mode Toggle -->
+      <div class="mode-tabs">
+        <button [class.active]="mode() === 'login'" (click)="mode.set('login')">
+          Sign In
+        </button>
+        <button [class.active]="mode() === 'register'" (click)="mode.set('register')">
+          Create Account {{ !hasUsers() ? '(Admin)' : '' }}
+        </button>
+      </div>
+
+      <form (submit)="$event.preventDefault(); submitAuth()" class="auth-form">
+        
+        @if (mode() === 'register') {
+          <div class="form-group">
+            <label for="reg-email">Email Address</label>
+            <input 
+              id="reg-email" 
+              type="email" 
+              [(ngModel)]="email" 
+              name="email" 
+              placeholder="wanderer@example.com" 
+              required 
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="reg-username">Username</label>
+            <input 
+              id="reg-username" 
+              type="text" 
+              [(ngModel)]="username" 
+              name="username" 
+              placeholder="wanderer" 
+              required 
+            />
+          </div>
+        } @else {
+          <div class="form-group">
+            <label for="login-handle">Email or Username</label>
+            <input 
+              id="login-handle" 
+              type="text" 
+              [(ngModel)]="loginHandle" 
+              name="loginHandle" 
+              placeholder="wanderer@example.com" 
+              required 
+            />
+          </div>
+        }
+
+        <div class="form-group">
+          <label for="auth-password">Password</label>
+          <input 
+            id="auth-password" 
+            type="password" 
+            [(ngModel)]="password" 
+            name="password" 
+            placeholder="••••••••" 
+            required 
+          />
+        </div>
+
+        <button type="submit" class="btn-submit" [disabled]="loading()">
+          {{ loading() ? 'Please wait...' : (mode() === 'register' ? 'Register Account' : 'Sign In') }}
+        </button>
+      </form>
+
+    } @else {
+
+      <!-- Authenticated Profile & BYOK Key Manager -->
+      @if (authService.currentUser(); as user) {
+        <div class="profile-pane">
+          
+          <div class="user-summary-card">
+            <div class="avatar-ph">👤</div>
+            <div class="user-info">
+              <h4>{{ user.username }}</h4>
+              <span class="user-email">{{ user.email }}</span>
+              <div class="badges-row">
+                @if (user.isAdmin) {
+                  <span class="badge admin">👑 Admin</span>
+                } @else {
+                  <span class="badge member">User</span>
+                }
+                <span class="badge key-status" [class.has-key]="user.hasOpenRouterKey">
+                  {{ user.hasOpenRouterKey ? '🔑 API Key Set' : '⚠️ No API Key' }}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <!-- OpenRouter BYOK Key Section -->
+          <div class="byok-section">
+            <div class="byok-title">
+              <strong>OpenRouter API Key (BYOK)</strong>
+              <p>Your API key is encrypted at rest using AES-256-GCM. It is only decrypted server-side when generating roleplay responses.</p>
+            </div>
+
+            <div class="api-key-form">
+              <input 
+                type="password" 
+                [(ngModel)]="apiKeyInput" 
+                placeholder="sk-or-v1-..." 
+                class="key-input"
+              />
+              <button class="btn-save-key" (click)="saveApiKey()" [disabled]="loading() || !apiKeyInput.trim()">
+                Save Key
+              </button>
+            </div>
+
+            @if (user.hasOpenRouterKey) {
+              <div class="key-actions-row">
+                <span class="key-note">✔ An encrypted OpenRouter key is active on your profile.</span>
+                <button class="btn-remove-key" (click)="removeApiKey()" [disabled]="loading()">
+                  Remove Key
+                </button>
+              </div>
+            }
+          </div>
+
+          <div class="logout-footer">
+            <button class="btn-logout" (click)="authService.logout(); close.emit()">
+              Sign Out
+            </button>
+          </div>
+
+        </div>
+      }
+
+    }
+
+  </div>
+</div>

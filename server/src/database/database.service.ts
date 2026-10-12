@@ -103,6 +103,25 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.db.exec(schemaSql);
+
+    // Apply incremental column migrations for existing databases
+    this.ensureColumn('users', 'email', 'TEXT');
+    this.ensureColumn('keyword_memories', 'session_id', 'TEXT');
+    this.ensureColumn('keyword_memories', 'scope', "TEXT DEFAULT 'session'");
+    this.ensureColumn('episodic_memories', 'scope', "TEXT DEFAULT 'session'");
+  }
+
+  private ensureColumn(table: string, column: string, columnDef: string) {
+    try {
+      const columns = this.db.prepare(`PRAGMA table_info(${table})`).all() as TableColumnInfo[];
+      const exists = columns.some((c) => c.name === column);
+      if (!exists) {
+        this.logger.log(`Running migration: ALTER TABLE ${table} ADD COLUMN ${column} ${columnDef}`);
+        this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${columnDef}`);
+      }
+    } catch (e: any) {
+      this.logger.warn(`Could not check or add column ${column} to ${table}: ${e.message}`);
+    }
   }
 
   getDb(): DatabaseInstance {
@@ -212,8 +231,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const now = new Date().toISOString();
 
     const insertUser = this.db.prepare(`
-      INSERT OR IGNORE INTO users (id, username, password_hash, is_admin, settings_json, created_at)
-      VALUES (?, ?, ?, 1, ?, ?)
+      INSERT OR IGNORE INTO users (id, email, username, password_hash, is_admin, settings_json, created_at)
+      VALUES (?, ?, ?, ?, 1, ?, ?)
     `);
 
     const insertPersona = this.db.prepare(`
@@ -227,8 +246,8 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     `);
 
     const insertKeyword = this.db.prepare(`
-      INSERT OR IGNORE INTO keyword_memories (id, character_id, user_id, title, keywords, content, priority, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT OR IGNORE INTO keyword_memories (id, character_id, session_id, user_id, title, keywords, content, scope, priority, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const insertSession = this.db.prepare(`
@@ -249,6 +268,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     const transaction = this.db.transaction(() => {
       insertUser.run(
         demoUserId,
+        'adventurer@kron-tavern.local',
         'adventurer',
         '$argon2id$v=19$m=65536,t=3,p=4$demo_salt$demo_hash',
         JSON.stringify({ defaultModel: 'anthropic/claude-3.5-sonnet', theme: 'dark' }),
@@ -282,10 +302,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       insertKeyword.run(
         'kw_phosphor_01',
         demoCharId,
+        null,
         demoUserId,
         'Celestial Phosphorus',
         'blue phosphorus,celestial phosphorus,luminescent reagent',
         'Celestial Phosphorus is a rare, bioluminescent extract gathered only during the new moon. Lyra uses it for stabilizing volatile transmutations.',
+        'character',
         15,
         now,
       );
@@ -293,10 +315,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       insertKeyword.run(
         'kw_academy_01',
         demoCharId,
+        null,
         demoUserId,
         'The Royal Academy of Spires',
         'royal academy,the spires,grand archivist',
         'Lyra was formerly the youngest Proctor of Transmutation at the Royal Academy of Spires before leaving under suspicious circumstances regarding a forbidden grimoire.',
+        'character',
         20,
         now,
       );
@@ -332,6 +356,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return `
       CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
         username TEXT UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         openrouter_key_encrypted TEXT,
@@ -370,10 +395,12 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE TABLE IF NOT EXISTS keyword_memories (
         id TEXT PRIMARY KEY,
         character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
+        session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title TEXT NOT NULL,
         keywords TEXT NOT NULL,
         content TEXT NOT NULL,
+        scope TEXT DEFAULT 'session',
         priority INTEGER DEFAULT 10,
         is_active INTEGER DEFAULT 1,
         created_at TEXT DEFAULT (datetime('now')),
@@ -418,6 +445,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         memory_text TEXT NOT NULL,
+        scope TEXT DEFAULT 'session',
         importance INTEGER DEFAULT 5,
         source_turn_id TEXT,
         created_at TEXT DEFAULT (datetime('now'))

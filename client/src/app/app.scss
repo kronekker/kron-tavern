@@ -73,6 +73,43 @@
         border: 1px solid #334155;
         &:hover { background: #334155; color: #fff; }
       }
+
+      &.user-pill {
+        background: #1e293b;
+        color: #f8fafc;
+        border: 1px solid #334155;
+        padding: 0.35rem 0.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+
+        &:hover {
+          border-color: #38bdf8;
+        }
+
+        .avatar-dot {
+          font-size: 0.95rem;
+        }
+
+        .user-name {
+          font-size: 0.82rem;
+          font-weight: 600;
+        }
+
+        .admin-badge {
+          font-size: 0.8rem;
+        }
+      }
+
+      &.auth-cta {
+        background: rgba(56, 189, 248, 0.12);
+        color: #38bdf8;
+        border: 1px solid rgba(56, 189, 248, 0.3);
+
+        &:hover {
+          background: rgba(56, 189, 248, 0.2);
+        }
+      }
     }
   }
 }

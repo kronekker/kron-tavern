@@ -13,9 +13,28 @@
       <a href="/api/docs" target="_blank" class="nav-btn secondary" title="Open Swagger API Documentation">
         <span>📚 Swagger</span>
       </a>
-      <button class="nav-btn primary" (click)="toggleAdmin()" title="Open Database & System Admin">
-        <span>⚙️ DB & Admin</span>
-      </button>
+
+      <!-- Admin Button (Only shown if user is admin) -->
+      @if (authService.isAdmin()) {
+        <button class="nav-btn primary" (click)="toggleAdmin()" title="Open Database & System Admin">
+          <span>⚙️ DB & Admin</span>
+        </button>
+      }
+
+      <!-- User Authentication / Profile Pill -->
+      @if (authService.isAuthenticated()) {
+        <button class="nav-btn user-pill" (click)="toggleAuth()" title="User Profile & API Keys">
+          <span class="avatar-dot">👤</span>
+          <span class="user-name">{{ authService.currentUser()?.username }}</span>
+          @if (authService.isAdmin()) {
+            <span class="admin-badge">👑</span>
+          }
+        </button>
+      } @else {
+        <button class="nav-btn auth-cta" (click)="toggleAuth()" title="Sign In or Create Account">
+          <span>🔐 Sign In / Register</span>
+        </button>
+      }
     </div>
   </header>
 
@@ -34,10 +53,18 @@
 
         <div class="features-list">
           <div class="feature-item">
+            <span class="icon">👤</span>
+            <div>
+              <strong>User Scopes & Entitlements</strong>
+              <p>Private and public characters, user-private personas, and session-specific vs user-global memories.</p>
+            </div>
+          </div>
+
+          <div class="feature-item">
             <span class="icon">💾</span>
             <div>
               <strong>Embedded SQLite & sqlite-vec</strong>
-              <p>Self-contained relational and 384-dim vector storage in a single local database file.</p>
+              <p>Zero-dependency relational and 384-dimensional vector storage in a single local database file.</p>
             </div>
           </div>
 
@@ -48,27 +75,36 @@
               <p>Turn-by-turn prompt inspection, vector similarity attribution, and token telemetry.</p>
             </div>
           </div>
-
-          <div class="feature-item">
-            <span class="icon">⚖️</span>
-            <div>
-              <strong>In-Session A/B Model Testing</strong>
-              <p>Side-by-side comparison of different models for response quality and personality.</p>
-            </div>
-          </div>
         </div>
 
         <div class="cta-actions">
-          <button class="btn-cta" (click)="toggleAdmin()">
-            ⚙️ Open Database & Admin Panel
-          </button>
+          @if (authService.isAuthenticated()) {
+            @if (authService.isAdmin()) {
+              <button class="btn-cta" (click)="toggleAdmin()">
+                ⚙️ Open Database & Admin Panel
+              </button>
+            } @else {
+              <button class="btn-cta" (click)="toggleAuth()">
+                🔑 Manage API Keys & Settings
+              </button>
+            }
+          } @else {
+            <button class="btn-cta" (click)="toggleAuth()">
+              🔐 Sign In / Register (First user is Admin)
+            </button>
+          }
         </div>
       </div>
     </div>
   </main>
 
   <!-- Admin Popup / Modal -->
-  @if (showAdmin()) {
+  @if (showAdmin() && authService.isAdmin()) {
     <app-admin (close)="showAdmin.set(false)" />
+  }
+
+  <!-- Auth Modal -->
+  @if (showAuth()) {
+    <app-auth-modal (close)="showAuth.set(false)" />
   }
 </div>

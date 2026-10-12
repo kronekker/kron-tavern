@@ -7,11 +7,15 @@ import {
   Query,
   HttpException,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { DatabaseService } from '../database/database.service.js';
+import { AdminGuard } from '../auth/admin.guard.js';
 
 @ApiTags('admin')
+@ApiBearerAuth()
+@UseGuards(AdminGuard)
 @Controller('admin')
 export class AdminController {
   constructor(private readonly dbService: DatabaseService) {}

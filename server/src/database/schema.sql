@@ -5,6 +5,7 @@
 -- Users
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
   username TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   openrouter_key_encrypted TEXT,
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
--- Durable User Personas
+-- Durable User Personas (Always Private to Creator)
 CREATE TABLE IF NOT EXISTS personas (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -27,7 +28,7 @@ CREATE TABLE IF NOT EXISTS personas (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
--- Characters (AI Companions)
+-- Characters (AI Companions: Private or Public)
 CREATE TABLE IF NOT EXISTS characters (
   id TEXT PRIMARY KEY,
   creator_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -46,20 +47,23 @@ CREATE TABLE IF NOT EXISTS characters (
 );
 
 -- Tier 1: Keyword Memories (Lorebooks / World Info)
+-- Scope: 'session' (originating session), 'character' (character-wide), 'user' (all user's chats)
 CREATE TABLE IF NOT EXISTS keyword_memories (
   id TEXT PRIMARY KEY,
   character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
+  session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
-  keywords TEXT NOT NULL, -- comma-separated or JSON array of trigger words
+  keywords TEXT NOT NULL, -- comma-separated trigger words
   content TEXT NOT NULL,
+  scope TEXT DEFAULT 'session', -- 'session', 'character', 'user'
   priority INTEGER DEFAULT 10,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
--- Roleplay Sessions & Group Chats
+-- Roleplay Sessions & Group Chats (Always Private to User)
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -85,7 +89,7 @@ CREATE TABLE IF NOT EXISTS session_participants (
   created_at TEXT DEFAULT (datetime('now'))
 );
 
--- Chat Messages
+-- Chat Messages (Always Private within Session)
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
   session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -99,12 +103,14 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 -- Tier 2: Episodic Memories
+-- Scope: 'session' (default, exclusive to conversation) or 'user' (promoted to global across user sessions)
 CREATE TABLE IF NOT EXISTS episodic_memories (
   id TEXT PRIMARY KEY,
   character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
   session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   memory_text TEXT NOT NULL,
+  scope TEXT DEFAULT 'session', -- 'session', 'user'
   importance INTEGER DEFAULT 5,
   source_turn_id TEXT,
   created_at TEXT DEFAULT (datetime('now'))

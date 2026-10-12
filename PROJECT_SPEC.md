@@ -173,62 +173,106 @@ The Turn Inspector visualizes the context allocation:
 
 ---
 
-## 7. The Dual-Tiered Memory Engine
+## 7. User Entitlements & Scoping Architecture
 
-### 7.1. Tier 1: User-Defined Keyword Memories (Lorebooks)
-* **Keyword Matching:** Exact word, phrase, or regex matching on the last $N$ turns.
-* **Activation Rules:** Priority weighting, max entries per turn, optional entry exclusion rules.
+### 7.1. User Model & First-User Admin Bootstrap
+* **Authentication:** Users register with `email`, `username`, and `password`. Sign-in reuses credentials with secure session JWTs / tokens.
+* **The "First-User Admin" Rule:**
+  * When the first user account is created in a fresh instance (`COUNT(*) == 0`), they are automatically granted **Admin Status (`is_admin = 1`)**.
+  * All subsequent registered accounts default to standard user status (`is_admin = 0`).
+  * **Admin Entitlements:** Only Admin users can access the `/api/admin/*` endpoints and open the DB & System Administration panel (table explorer, vacuum, integrity checks, and maintenance actions).
 
-### 7.2. Tier 2: Automated Episodic Memory Formation
-* **Extraction:** In background or upon threshold trigger, an extraction prompt parses recent turns for facts, relationships, and user details.
-* **Local Embedding:** Processed via in-memory `@xenova/transformers` (`all-MiniLM-L6-v2`, 384 dimensions).
-* **Vector Search:** Query vector searched via `sqlite-vec` with cosine similarity score cutoff.
+### 7.2. Entity Scoping Rules
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        Scope Hierarchy                                 │
+├────────────────────────────────────────────────────────────────────────┤
+│ 1. Characters:                                                         │
+│    - Private (Default): Visible only to creator.                       │
+│    - Public: Visible in gallery to all users. Sessions remain isolated.│
+├────────────────────────────────────────────────────────────────────────┤
+│ 2. Personas:                                                           │
+│    - Always Private: Users can only see and manage their own personas. │
+├────────────────────────────────────────────────────────────────────────┤
+│ 3. Sessions & Messages:                                                │
+│    - Always Private: Tied strictly to the user who launched them.      │
+├────────────────────────────────────────────────────────────────────────┤
+│ 4. Memories (Keyword & Vector Episodic):                               │
+│    - Session Exclusive (Default): Recalled only in the originating chat│
+│    - User-Global: User can promote memories to be active across ALL    │
+│      of their personal chat sessions.                                  │
+│    - Character-Global: Creator-defined lore active for that character. │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## 8. Traceability: The Turn Inspector
+## 8. The Dual-Tiered Memory Engine
+
+### 8.1. Tier 1: User-Defined Keyword Memories (Lorebooks)
+* **Keyword Matching:** Exact word, phrase, or regex matching on the last $N$ turns.
+* **Scope Support:** Can be scoped to a single `session`, to a `character`, or `user`-global.
+
+### 8.2. Tier 2: Automated Episodic Memory Formation
+* **Extraction:** In background or upon threshold trigger, an extraction prompt parses recent turns for facts, relationships, and user details.
+* **Local Embedding:** Processed via in-memory `@xenova/transformers` (`all-MiniLM-L6-v2`, 384 dimensions).
+* **Vector Search:** Query vector searched via `sqlite-vec` with cosine similarity score cutoff.
+* **Scope Promotion:** Default is `session` scope. The user can review formed memories and promote them to `user`-global so other sessions benefit from that accumulated context.
+
+---
+
+## 9. Traceability: The Turn Inspector
 
 Every generated message includes an **Inspect Turn** action in its menu, displaying:
 1. **Raw API Request:** Full JSON payload sent to OpenRouter (exact system, user, and assistant array).
 2. **Memory Breakdown:**
-   * Triggered keyword entries.
-   * Retrieved semantic memories with similarity scores (e.g., `0.84 - "User dislikes coffee"`).
+   * Triggered keyword entries (showing scope: session, character, or global).
+   * Retrieved semantic memories with similarity scores.
 3. **Execution Diagnostics:** Model ID, latency, prompt tokens, completion tokens, estimated cost.
 4. **Compression Status:** Current context fill percentage, whether a compression event fired on this turn, and summary delta.
 
 ---
 
-## 9. Relational & Vector Schema (SQLite)
+## 10. Relational & Vector Schema (SQLite)
 
 ```sql
 -- Identity & Personas
-users (id, username, password_hash, openrouter_key_encrypted, settings_json, created_at)
-personas (id, user_id, name, avatar_url, description, speech_style, is_default, created_at)
+users (id, email, username, password_hash, openrouter_key_encrypted, settings_json, is_admin, created_at, updated_at)
+personas (id, user_id, name, avatar_url, description, speech_style, is_default, created_at, updated_at)
 
 -- Characters
 characters (id, creator_id, name, avatar_url, tagline, greeting, system_prompt, 
-            scenario, dialogue_examples, is_public, created_at, updated_at)
+            scenario, dialogue_examples, is_public, default_model, temperature, created_at, updated_at)
 
--- Memories & Lore
-keyword_memories (id, character_id, user_id, keywords, content, priority, is_active)
-episodic_memories (id, character_id, session_id, memory_text, embedding, created_at)
+-- Memories & Lore (with explicit scoping)
+keyword_memories (id, character_id, session_id, user_id, title, keywords, content, 
+                  scope, priority, is_active, created_at, updated_at)
+                  -- scope: 'session', 'character', 'user'
+
+episodic_memories (id, character_id, session_id, user_id, memory_text, 
+                   scope, importance, source_turn_id, created_at)
+                   -- scope: 'session', 'user'
 
 -- Sessions & Group Chats
 sessions (id, user_id, title, is_group, active_persona_id, 
           context_strategy, context_threshold_percent, rolling_summary, created_at, updated_at)
 session_participants (id, session_id, character_id, sort_order)
-messages (id, session_id, sender_type, sender_id, content, is_canonical, ab_group_id, created_at)
+messages (id, session_id, sender_type, sender_id, content, is_canonical, ab_group_id, model_used, created_at)
 
 -- Turn Auditing & A/B Traces
 turn_traces (id, message_id, session_id, model_used, prompt_tokens, completion_tokens,
              latency_ms, raw_request_json, raw_response_json, 
              triggered_keywords_json, recalled_memories_json, 
              context_fill_percent, created_at)
+
+-- sqlite-vec Virtual Table
+vec_episodic_memories USING vec0(memory_id TEXT PRIMARY KEY, embedding float[384])
 ```
 
 ---
 
-## 10. Workspace & Repository Structure
+## 11. Workspace & Repository Structure
 
 We recommend a clean monorepo layout using npm/pnpm workspaces:
 

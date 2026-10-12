@@ -6,6 +6,7 @@ import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { DatabaseModule } from './database/database.module.js';
 import { AdminModule } from './admin/admin.module.js';
+import { AuthModule } from './auth/auth.module.js';
 
 // Locate production Angular SPA build if present
 const candidatePaths = [
@@ -18,6 +19,7 @@ const staticPath = candidatePaths.find((p) => existsSync(p)) ?? null;
 @Module({
   imports: [
     DatabaseModule,
+    AuthModule,
     AdminModule,
     ...(staticPath
       ? [
