@@ -4,6 +4,8 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { DatabaseModule } from './database/database.module.js';
+import { AdminModule } from './admin/admin.module.js';
 
 // Locate production Angular SPA build if present
 const candidatePaths = [
@@ -15,6 +17,8 @@ const staticPath = candidatePaths.find((p) => existsSync(p)) ?? null;
 
 @Module({
   imports: [
+    DatabaseModule,
+    AdminModule,
     ...(staticPath
       ? [
           ServeStaticModule.forRoot({

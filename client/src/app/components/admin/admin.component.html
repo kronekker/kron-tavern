@@ -1,0 +1,228 @@
+<div class="admin-backdrop" (click)="close.emit()">
+  <div class="admin-modal" (click)="$event.stopPropagation()">
+    
+    <!-- Header -->
+    <header class="admin-header">
+      <div class="header-left">
+        <div class="badge-icon">⚙️</div>
+        <div>
+          <h2>Database & System Admin</h2>
+          <span class="sub-text">Embedded SQLite & Vector Storage Engine</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <button class="btn-icon" (click)="refreshAll()" title="Refresh">🔄</button>
+        <button class="btn-close" (click)="close.emit()" title="Close Admin">✕</button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="admin-tabs">
+      <button 
+        [class.active]="activeTab() === 'overview'" 
+        (click)="activeTab.set('overview')">
+        📊 Health & Storage
+      </button>
+      <button 
+        [class.active]="activeTab() === 'tables'" 
+        (click)="activeTab.set('tables')">
+        🗄️ Table Explorer
+      </button>
+    </nav>
+
+    <!-- Global Notification Banner -->
+    @if (actionMessage(); as msg) {
+      <div class="alert-banner" [class]="msg.type">
+        <span>{{ msg.text }}</span>
+        <button class="btn-dismiss" (click)="actionMessage.set(null)">✕</button>
+      </div>
+    }
+
+    <!-- Content Body -->
+    <div class="admin-body">
+
+      <!-- TAB 1: Overview & Maintenance -->
+      @if (activeTab() === 'overview') {
+        <div class="overview-pane">
+          
+          <!-- Metric Cards -->
+          <div class="metrics-grid">
+            <div class="metric-card">
+              <span class="metric-label">Database File Size</span>
+              <span class="metric-val">{{ stats() ? formatBytes(stats()!.dbSizeBytes) : '...' }}</span>
+              <span class="metric-detail">{{ stats()?.dbPath }}</span>
+            </div>
+
+            <div class="metric-card">
+              <span class="metric-label">WAL Log Size</span>
+              <span class="metric-val">{{ stats() ? formatBytes(stats()!.walSizeBytes) : '...' }}</span>
+              <span class="metric-detail">Mode: {{ stats()?.journalMode | uppercase }}</span>
+            </div>
+
+            <div class="metric-card">
+              <span class="metric-label">Total Records</span>
+              <span class="metric-val highlight">{{ getTotalRecordCount() }}</span>
+              <span class="metric-detail">Across {{ tables().length }} tables</span>
+            </div>
+
+            <div class="metric-card">
+              <span class="metric-label">Engine Versions</span>
+              <span class="metric-val">SQLite {{ stats()?.sqliteVersion || '...' }}</span>
+              <span class="metric-badge-vec">⚡ sqlite-vec {{ stats()?.sqliteVecVersion || '...' }}</span>
+            </div>
+          </div>
+
+          <!-- Maintenance Actions -->
+          <div class="section-card">
+            <h3>Database Maintenance & Seed</h3>
+            <p class="section-desc">Manage local storage defragmentation, consistency checks, or bootstrap sample data.</p>
+            <div class="actions-row">
+              <button class="btn-action primary" (click)="seedDemo()" [disabled]="loading()">
+                🌱 Seed Demo Data
+              </button>
+              <button class="btn-action secondary" (click)="runVacuum()" [disabled]="loading()">
+                🧹 Reclaim Space (VACUUM)
+              </button>
+              <button class="btn-action secondary" (click)="runIntegrityCheck()" [disabled]="loading()">
+                🩺 Run Integrity Check
+              </button>
+            </div>
+          </div>
+
+          <!-- Tables Summary -->
+          <div class="section-card">
+            <h3>Registered Tables & Row Counts</h3>
+            <div class="tables-summary-grid">
+              @for (tbl of tables(); track tbl.name) {
+                <div class="table-pill-summary" (click)="activeTab.set('tables'); selectTable(tbl.name)">
+                  <span class="table-name">{{ tbl.name }}</span>
+                  <span class="table-count-badge">{{ tbl.count }}</span>
+                </div>
+              }
+            </div>
+          </div>
+
+        </div>
+      }
+
+      <!-- TAB 2: Table Explorer -->
+      @if (activeTab() === 'tables') {
+        <div class="tables-pane">
+          
+          <!-- Table Selector Strip -->
+          <div class="table-selector-strip">
+            @for (tbl of tables(); track tbl.name) {
+              <button 
+                class="table-chip" 
+                [class.active]="selectedTable() === tbl.name"
+                (click)="selectTable(tbl.name)">
+                <span>{{ tbl.name }}</span>
+                <span class="count">{{ tbl.count }}</span>
+              </button>
+            }
+          </div>
+
+          <!-- Table Content Controls -->
+          <div class="table-controls-bar">
+            <div class="controls-left">
+              <span class="current-table-title">{{ selectedTable() }}</span>
+              <span class="total-tag">{{ tableData()?.total ?? 0 }} rows</span>
+            </div>
+            <div class="controls-right">
+              @if (tableData(); as data) {
+                <div class="pagination-controls">
+                  <button 
+                    class="btn-page" 
+                    [disabled]="currentPage() <= 1"
+                    (click)="changePage(currentPage() - 1)">
+                    ◀ Prev
+                  </button>
+                  <span class="page-indicator">Page {{ currentPage() }} of {{ data.totalPages || 1 }}</span>
+                  <button 
+                    class="btn-page" 
+                    [disabled]="currentPage() >= data.totalPages"
+                    (click)="changePage(currentPage() + 1)">
+                    Next ▶
+                  </button>
+                </div>
+              }
+            </div>
+          </div>
+
+          <!-- Data Grid -->
+          <div class="table-scroll-container">
+            @if (tableData(); as data) {
+              @if (data.rows.length === 0) {
+                <div class="empty-state">
+                  <span>No records found in table '{{ selectedTable() }}'.</span>
+                </div>
+              } @else {
+                <table class="admin-data-table">
+                  <thead>
+                    <tr>
+                      <th class="col-actions">Actions</th>
+                      @for (col of data.columns; track col.name) {
+                        <th>
+                          <div class="col-header-box">
+                            <span>{{ col.name }}</span>
+                            <span class="col-type">{{ col.type }}</span>
+                          </div>
+                        </th>
+                      }
+                    </tr>
+                  </thead>
+                  <tbody>
+                    @for (row of data.rows; track row.id || row.rowid) {
+                      <tr>
+                        <td class="col-actions">
+                          @if (row.id) {
+                            <button class="btn-row-del" (click)="deleteRow(row.id)" title="Delete Record">
+                              🗑️
+                            </button>
+                          }
+                        </td>
+                        @for (col of data.columns; track col.name) {
+                          <td>
+                            @if (isJsonString(row[col.name])) {
+                              <button 
+                                class="btn-inspect-json" 
+                                (click)="inspectValue(col.name, row[col.name])">
+                                🔍 JSON Payload
+                              </button>
+                            } @else {
+                              <span class="cell-text" [title]="row[col.name] ?? ''">
+                                {{ row[col.name] !== null && row[col.name] !== undefined ? row[col.name] : 'NULL' }}
+                              </span>
+                            }
+                          </td>
+                        }
+                      </tr>
+                    }
+                  </tbody>
+                </table>
+              }
+            }
+          </div>
+
+        </div>
+      }
+
+    </div>
+
+    <!-- JSON Inspector Drawer / Modal -->
+    @if (inspectedJson(); as item) {
+      <div class="json-inspector-overlay" (click)="closeJsonInspector()">
+        <div class="json-inspector-dialog" (click)="$event.stopPropagation()">
+          <div class="dialog-header">
+            <h4>Inspect Payload: {{ item.title }}</h4>
+            <button class="btn-close-sm" (click)="closeJsonInspector()">✕</button>
+          </div>
+          <div class="dialog-content">
+            <pre><code>{{ item.data | json }}</code></pre>
+          </div>
+        </div>
+      </div>
+    }
+
+  </div>
+</div>
