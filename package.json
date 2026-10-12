@@ -1,0 +1,24 @@
+{
+  "name": "kron-tavern-monorepo",
+  "version": "1.0.0",
+  "description": "AI companion and roleplay platform with hybrid episodic memory, A/B model testing, and prompt transparency.",
+  "private": true,
+  "workspaces": [
+    "server",
+    "client"
+  ],
+  "scripts": {
+    "dev": "concurrently -n \"SERVER,CLIENT\" -c \"blue,green\" \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:server": "npm --prefix server run start:dev",
+    "dev:client": "npm --prefix client run start",
+    "build": "npm run build:client && npm run build:server",
+    "build:server": "npm --prefix server run build",
+    "build:client": "npm --prefix client run build",
+    "start": "npm --prefix server run start:prod",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "clean": "rm -rf client/dist server/dist client/.angular"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.5"
+  }
+}

@@ -6,6 +6,7 @@ node_modules/
 dist/
 build/
 .angular/
+*.tsbuildinfo
 
 # Environment and secrets
 .env
