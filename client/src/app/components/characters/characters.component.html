@@ -289,14 +289,14 @@
                   <span class="hint">(Core persona, behavior, traits, and speech rules)</span>
                 </label>
                 <textarea 
-                  rows="5" 
+                  rows="6" 
                   [(ngModel)]="formSystemPrompt" 
                   name="system_prompt" 
-                  maxlength="2000" 
+                  maxlength="2500" 
                   placeholder="You are Lyra, a sharp-witted herbalist who speaks with a dry sense of humor. You value botanical knowledge above royal politics..."
                   required>
                 </textarea>
-                <span class="char-counter">{{ formSystemPrompt().length }} / 2,000</span>
+                <span class="char-counter">{{ formSystemPrompt().length }} / 2,500</span>
               </div>
 
               <div class="form-group">
@@ -426,14 +426,14 @@
 
                       <div class="snippet-card-bottom">
                         <textarea 
-                          rows="2" 
+                          rows="3" 
                           [(ngModel)]="snip.content" 
                           [name]="'snip_content_' + $index" 
-                          maxlength="500" 
+                          maxlength="1000" 
                           placeholder="Small concise factual description to inject into context when triggered..."
                           required>
                         </textarea>
-                        <span class="char-counter">{{ (snip.content || '').length }} / 500</span>
+                        <span class="char-counter">{{ (snip.content || '').length }} / 1,000</span>
                       </div>
                     </div>
                   }

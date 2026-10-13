@@ -194,14 +194,14 @@
                   <span class="hint">(Who you are, your physical appearance, background, and perspective)</span>
                 </label>
                 <textarea 
-                  rows="4" 
+                  rows="6" 
                   [(ngModel)]="formDescription" 
                   name="description" 
-                  maxlength="1000" 
+                  maxlength="2500" 
                   placeholder="A weathered traveler in dust-streaked leather armor. Dark hair tied back, observant amber eyes, and a quiet demeanor..." 
                   required>
                 </textarea>
-                <span class="char-counter">{{ formDescription().length }} / 1,000</span>
+                <span class="char-counter">{{ formDescription().length }} / 2,500</span>
               </div>
 
               <div class="checkbox-row">
@@ -269,14 +269,14 @@
 
                       <div class="snippet-card-bottom">
                         <textarea 
-                          rows="2" 
+                          rows="3" 
                           [(ngModel)]="snip.content" 
                           [name]="'snip_content_' + $index" 
-                          maxlength="500" 
+                          maxlength="1000" 
                           placeholder="Fact or description to inject when triggered..." 
                           required>
                         </textarea>
-                        <span class="char-counter">{{ (snip.content || '').length }} / 500</span>
+                        <span class="char-counter">{{ (snip.content || '').length }} / 1,000</span>
                       </div>
                     </div>
                   }
