@@ -11,6 +11,7 @@ import {
   ModelPricingInfo,
   CategoryMetadataResponse,
   CategoryGroup,
+  ResolvedActiveModels,
 } from '../../services/models.service';
 import { AuthService } from '../../services/auth.service';
 
@@ -36,6 +37,9 @@ export class ModelCatalogComponent implements OnInit {
   searchQuery = signal<string>('');
   loading = signal<boolean>(false);
   refreshing = signal<boolean>(false);
+
+  // Active Defaults & Model Roles
+  activeDefaults = signal<ResolvedActiveModels | null>(null);
 
   // Billing Guide Modal / Drawer Tab
   showBillingGuide = signal<boolean>(false);
@@ -109,6 +113,112 @@ export class ModelCatalogComponent implements OnInit {
     this.loadCachedSlugs();
     this.loadBillingReference();
     this.loadCategoryMetadata();
+    this.loadDefaults();
+  }
+
+  loadDefaults() {
+    this.modelsService.getActiveDefaults().subscribe({
+      next: (res) => this.activeDefaults.set(res),
+      error: (err) => console.error('Failed to load active defaults in catalog', err),
+    });
+  }
+
+  isSystemDefault(m: ModelSummary): boolean {
+    const d = this.activeDefaults()?.system;
+    if (!d) return false;
+    return (
+      d.chatModel === m.slug ||
+      d.textToImageModel === m.slug ||
+      d.imageToImageModel === m.slug ||
+      d.chatModel === m.id ||
+      d.textToImageModel === m.id ||
+      d.imageToImageModel === m.id
+    );
+  }
+
+  isUserPreferred(m: ModelSummary): boolean {
+    const u = this.activeDefaults()?.user;
+    if (!u) return false;
+    return (
+      u.chatModel === m.slug ||
+      u.textToImageModel === m.slug ||
+      u.imageToImageModel === m.slug ||
+      u.chatModel === m.id ||
+      u.textToImageModel === m.id ||
+      u.imageToImageModel === m.id
+    );
+  }
+
+  setAsSystemDefault(m: ModelSummary) {
+    let payload: any = {};
+    if (m.type === 'chat') payload = { chatModel: m.slug };
+    else if (m.type === 'text-to-image') payload = { textToImageModel: m.slug };
+    else if (m.type === 'image-to-image') payload = { imageToImageModel: m.slug };
+    else return;
+
+    this.modelsService.updateSystemDefaults(payload).subscribe({
+      next: (res) => {
+        this.activeDefaults.set(res);
+        this.notification.set({
+          type: 'success',
+          message: `👑 Model '${m.title}' set as Tavern System Default for ${m.type}!`,
+        });
+      },
+      error: (err) => {
+        this.notification.set({
+          type: 'error',
+          message: err.error?.message || 'Failed to update system default.',
+        });
+      },
+    });
+  }
+
+  setAsUserPreferred(m: ModelSummary) {
+    let payload: any = {};
+    if (m.type === 'chat') payload = { chatModel: m.slug };
+    else if (m.type === 'text-to-image') payload = { textToImageModel: m.slug };
+    else if (m.type === 'image-to-image') payload = { imageToImageModel: m.slug };
+    else return;
+
+    this.modelsService.updateUserDefaults(payload).subscribe({
+      next: (res) => {
+        this.activeDefaults.set(res);
+        this.notification.set({
+          type: 'success',
+          message: `🎯 Model '${m.title}' set as your Preferred Model for ${m.type}!`,
+        });
+      },
+      error: (err) => {
+        this.notification.set({
+          type: 'error',
+          message: err.error?.message || 'Failed to set preferred model.',
+        });
+      },
+    });
+  }
+
+  revertUserPreference(m: ModelSummary) {
+    let payload: any = {};
+    if (m.type === 'chat') payload = { chatModel: null };
+    else if (m.type === 'text-to-image') payload = { textToImageModel: null };
+    else if (m.type === 'image-to-image') payload = { imageToImageModel: null };
+    else return;
+
+    this.modelsService.updateUserDefaults(payload).subscribe({
+      next: (res) => {
+        this.activeDefaults.set(res);
+        this.notification.set({
+          type: 'info',
+          message: `↺ Reverted ${m.type} model to Tavern Admin default.`,
+        });
+      },
+      error: (err) => {
+        this.notification.set({
+          type: 'error',
+          message: err.error?.message || 'Failed to revert model preference.',
+        });
+      },
+    });
   }
 
   loadCategoryMetadata() {

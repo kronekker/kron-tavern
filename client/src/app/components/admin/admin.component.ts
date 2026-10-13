@@ -1,5 +1,6 @@
 import { Component, OnInit, inject, signal, output } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
 import {
   AdminService,
   DatabaseStats,
@@ -7,13 +8,18 @@ import {
   TableDataResponse,
   TableColumnInfo,
 } from '../../services/admin.service';
-import { ModelsService, ModelCatalogStats } from '../../services/models.service';
+import {
+  ModelsService,
+  ModelCatalogStats,
+  ModelSummary,
+  ResolvedActiveModels,
+} from '../../services/models.service';
 import { AuthService } from '../../services/auth.service';
 
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './admin.component.html',
   styleUrls: ['./admin.component.scss'],
 })
@@ -36,6 +42,16 @@ export class AdminComponent implements OnInit {
   currentPage = signal<number>(1);
   pageSize = signal<number>(15);
 
+  // System Default Models signals
+  activeDefaults = signal<ResolvedActiveModels | null>(null);
+  chatModels = signal<ModelSummary[]>([]);
+  textToImageModels = signal<ModelSummary[]>([]);
+  imageToImageModels = signal<ModelSummary[]>([]);
+  selectedDefaultChat = signal<string>('');
+  selectedDefaultT2I = signal<string>('');
+  selectedDefaultI2I = signal<string>('');
+  savingDefaults = signal<boolean>(false);
+
   loading = signal<boolean>(false);
   refreshingModels = signal<boolean>(false);
   actionMessage = signal<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
@@ -51,9 +67,73 @@ export class AdminComponent implements OnInit {
     this.loadStats();
     this.loadModelsStats();
     this.loadTables();
+    this.loadDefaultsAndModels();
     if (this.selectedTable()) {
       this.loadTableData(this.selectedTable(), this.currentPage());
     }
+  }
+
+  loadDefaultsAndModels() {
+    this.modelsService.getActiveDefaults().subscribe({
+      next: (res) => {
+        this.activeDefaults.set(res);
+        this.selectedDefaultChat.set(res.system.chatModel);
+        this.selectedDefaultT2I.set(res.system.textToImageModel);
+        this.selectedDefaultI2I.set(res.system.imageToImageModel);
+      },
+      error: (err) => console.error('Failed to load active defaults', err),
+    });
+
+    this.modelsService.getCatalog('all').subscribe({
+      next: (res) => {
+        this.chatModels.set(res.models.filter((m) => m.type === 'chat'));
+        this.textToImageModels.set(res.models.filter((m) => m.type === 'text-to-image'));
+        this.imageToImageModels.set(res.models.filter((m) => m.type === 'image-to-image'));
+      },
+      error: (err) => console.error('Failed to load catalog models', err),
+    });
+  }
+
+  saveSystemDefaults() {
+    this.savingDefaults.set(true);
+    this.modelsService
+      .updateSystemDefaults({
+        chatModel: this.selectedDefaultChat(),
+        textToImageModel: this.selectedDefaultT2I(),
+        imageToImageModel: this.selectedDefaultI2I(),
+      })
+      .subscribe({
+        next: (res) => {
+          this.savingDefaults.set(false);
+          this.activeDefaults.set(res);
+          this.actionMessage.set({
+            type: 'success',
+            text: 'System default models updated successfully! All users will inherit these defaults unless they set personal overrides.',
+          });
+        },
+        error: (err) => {
+          this.savingDefaults.set(false);
+          this.actionMessage.set({
+            type: 'error',
+            text: err.error?.message || `Failed to update system defaults: ${err.message}`,
+          });
+        },
+      });
+  }
+
+  getSelectedChatSummary(): ModelSummary | undefined {
+    const slugOrId = this.selectedDefaultChat();
+    return this.chatModels().find((m) => m.slug === slugOrId || m.id === slugOrId);
+  }
+
+  getSelectedT2ISummary(): ModelSummary | undefined {
+    const slugOrId = this.selectedDefaultT2I();
+    return this.textToImageModels().find((m) => m.slug === slugOrId || m.id === slugOrId);
+  }
+
+  getSelectedI2ISummary(): ModelSummary | undefined {
+    const slugOrId = this.selectedDefaultI2I();
+    return this.imageToImageModels().find((m) => m.slug === slugOrId || m.id === slugOrId);
   }
 
   loadModelsStats() {

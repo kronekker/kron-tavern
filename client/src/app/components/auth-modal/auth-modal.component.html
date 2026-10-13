@@ -158,6 +158,116 @@
             }
           </div>
 
+          <!-- Preferred Multimodal AI Models Section -->
+          <div class="preferred-models-section">
+            <div class="section-title-row">
+              <div>
+                <strong>🎯 Preferred AI Models (Personal Overrides)</strong>
+                <p>
+                  Customize your default models for conversation chat, avatar synthesis, and scene variations.
+                  Any model set to "Default" automatically inherits the Tavern Administrator's choice.
+                </p>
+              </div>
+              <div class="actions-group">
+                <button 
+                  class="btn-reset-pref" 
+                  (click)="resetPreferredModels()" 
+                  [disabled]="savingPreferences()" 
+                  title="Revert all models to Tavern defaults">
+                  ↺ Revert to Defaults
+                </button>
+                <button 
+                  class="btn-save-pref" 
+                  (click)="savePreferredModels()" 
+                  [disabled]="savingPreferences()">
+                  {{ savingPreferences() ? 'Saving...' : '💾 Save Preferences' }}
+                </button>
+              </div>
+            </div>
+
+            <div class="models-picker-list">
+              
+              <!-- 1. Chat Model -->
+              <div class="picker-row">
+                <div class="picker-label-col">
+                  <span class="icon">💬</span>
+                  <div class="label-meta">
+                    <span class="label-name">Chat & Dialogue Model</span>
+                    <span class="inherit-status" [class.override]="!!userChatModel()">
+                      {{ userChatModel() ? 'Personal Override' : 'Inheriting Admin Default' }}
+                    </span>
+                  </div>
+                </div>
+                <select 
+                  class="pref-dropdown" 
+                  [ngModel]="userChatModel()" 
+                  (ngModelChange)="userChatModel.set($event)">
+                  <option value="">
+                    🌟 Default (Inherit: {{ getSystemChatTitle() }})
+                  </option>
+                  @for (m of chatModels(); track m.id) {
+                    <option [value]="m.slug">
+                      {{ m.title }} ({{ m.pricing.headlineBadge }})
+                    </option>
+                  }
+                </select>
+              </div>
+
+              <!-- 2. Text-to-Image Avatar Model -->
+              <div class="picker-row">
+                <div class="picker-label-col">
+                  <span class="icon">🎨</span>
+                  <div class="label-meta">
+                    <span class="label-name">Avatar Portrait Model (T2I)</span>
+                    <span class="inherit-status" [class.override]="!!userT2IModel()">
+                      {{ userT2IModel() ? 'Personal Override' : 'Inheriting Admin Default' }}
+                    </span>
+                  </div>
+                </div>
+                <select 
+                  class="pref-dropdown" 
+                  [ngModel]="userT2IModel()" 
+                  (ngModelChange)="userT2IModel.set($event)">
+                  <option value="">
+                    🌟 Default (Inherit: {{ getSystemT2ITitle() }})
+                  </option>
+                  @for (m of textToImageModels(); track m.id) {
+                    <option [value]="m.slug">
+                      {{ m.title }} ({{ m.pricing.headlineBadge }})
+                    </option>
+                  }
+                </select>
+              </div>
+
+              <!-- 3. Image-to-Image Scene Model -->
+              <div class="picker-row">
+                <div class="picker-label-col">
+                  <span class="icon">🖼️</span>
+                  <div class="label-meta">
+                    <span class="label-name">Scenes & Expressions Model (I2I)</span>
+                    <span class="inherit-status" [class.override]="!!userI2IModel()">
+                      {{ userI2IModel() ? 'Personal Override' : 'Inheriting Admin Default' }}
+                    </span>
+                  </div>
+                </div>
+                <select 
+                  class="pref-dropdown" 
+                  [ngModel]="userI2IModel()" 
+                  (ngModelChange)="userI2IModel.set($event)">
+                  <option value="">
+                    🌟 Default (Inherit: {{ getSystemI2ITitle() }})
+                  </option>
+                  @for (m of imageToImageModels(); track m.id) {
+                    <option [value]="m.slug">
+                      {{ m.title }} ({{ m.pricing.headlineBadge }})
+                    </option>
+                  }
+                </select>
+              </div>
+
+            </div>
+          </div>
+
           @if (user.isAdmin) {
             <div class="admin-quick-action">
               <button class="btn-open-admin" (click)="openAdmin.emit(); close.emit()">

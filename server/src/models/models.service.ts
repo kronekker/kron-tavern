@@ -1,8 +1,32 @@
 import { Injectable, Logger, OnModuleInit, NotFoundException } from '@nestjs/common';
 import { existsSync, readFileSync, writeFileSync, mkdirSync, statSync, readdirSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
+import { DatabaseService } from '../database/database.service.js';
 
 export type ModelCategoryType = 'chat' | 'text-to-image' | 'image-to-image' | 'video' | 'voice' | 'other';
+
+export interface DefaultModelsConfig {
+  chatModel: string;
+  textToImageModel: string;
+  imageToImageModel: string;
+}
+
+export interface UserPreferredModels {
+  chatModel?: string | null;
+  textToImageModel?: string | null;
+  imageToImageModel?: string | null;
+}
+
+export interface ResolvedActiveModels {
+  system: DefaultModelsConfig;
+  user: UserPreferredModels;
+  effective: DefaultModelsConfig;
+  resolved: {
+    chat: ModelSummary | null;
+    textToImage: ModelSummary | null;
+    imageToImage: ModelSummary | null;
+  };
+}
 
 export interface BillingMethodSpec {
   name: string;
@@ -192,7 +216,7 @@ export class ModelsService implements OnModuleInit {
   private lastUpdated: string | null = null;
   private selectedCategories: string[] = [...DEFAULT_SELECTED_CATEGORIES];
 
-  constructor() {
+  constructor(private readonly dbService: DatabaseService) {
     const isInsideServer = existsSync(resolve(process.cwd(), 'nest-cli.json'));
     const rootDir = isInsideServer ? resolve(process.cwd(), '..') : process.cwd();
     const dataDir = resolve(rootDir, 'data');
@@ -810,4 +834,107 @@ export class ModelsService implements OnModuleInit {
       message: `Successfully synchronized ${stats.total} unique models across ${targetCategories.length} selected categories.`,
     };
   }
+
+  // --- Default & Preferred Multimodal LLM Management ---
+
+  public readonly DEFAULT_SYSTEM_MODELS: DefaultModelsConfig = {
+    chatModel: 'openai/gpt-6.1-sol',
+    textToImageModel: 'google/nano banana 2.1 advanced',
+    imageToImageModel: 'wiro-partners/qwen image edit uncensored',
+  };
+
+  findModelByIdOrSlug(val?: string | null, expectedType?: ModelCategoryType): ModelSummary | null {
+    if (!val || !val.trim()) return null;
+    const target = val.trim().toLowerCase();
+
+    // 1. Direct match on id
+    let match = this.cachedSummaries.find((m) => m.id === val.trim());
+    if (match) return match;
+
+    // 2. Match on slug
+    match = this.cachedSummaries.find((m) => m.slug.toLowerCase() === target);
+    if (match) return match;
+
+    // 3. Match on slugproject
+    match = this.cachedSummaries.find((m) => m.slugproject.toLowerCase() === target);
+    if (match) return match;
+
+    // 4. Match on title
+    match = this.cachedSummaries.find((m) => m.title.toLowerCase() === target);
+    if (match) return match;
+
+    // 5. If expectedType given and nothing matched, find first model of that type
+    if (expectedType) {
+      const fallback = this.cachedSummaries.find((m) => m.type === expectedType);
+      if (fallback) return fallback;
+    }
+
+    return null;
+  }
+
+  getSystemDefaultModels(): DefaultModelsConfig {
+    const current = this.dbService.getSetting<Partial<DefaultModelsConfig>>(
+      'default_models',
+      this.DEFAULT_SYSTEM_MODELS,
+    );
+
+    return {
+      chatModel: current.chatModel?.trim() || this.DEFAULT_SYSTEM_MODELS.chatModel,
+      textToImageModel: current.textToImageModel?.trim() || this.DEFAULT_SYSTEM_MODELS.textToImageModel,
+      imageToImageModel: current.imageToImageModel?.trim() || this.DEFAULT_SYSTEM_MODELS.imageToImageModel,
+    };
+  }
+
+  setSystemDefaultModels(update: Partial<DefaultModelsConfig>): ResolvedActiveModels {
+    const current = this.getSystemDefaultModels();
+    const next: DefaultModelsConfig = {
+      chatModel: update.chatModel?.trim() || current.chatModel,
+      textToImageModel: update.textToImageModel?.trim() || current.textToImageModel,
+      imageToImageModel: update.imageToImageModel?.trim() || current.imageToImageModel,
+    };
+
+    this.dbService.setSetting('default_models', next);
+    this.logger.log(`Updated tavern system default models: ${JSON.stringify(next)}`);
+    return this.getActiveModels();
+  }
+
+  getActiveModels(userId?: string): ResolvedActiveModels {
+    const system = this.getSystemDefaultModels();
+    let userPreferred: UserPreferredModels = {};
+
+    if (userId) {
+      try {
+        const db = this.dbService.getDb();
+        const row = db.prepare('SELECT settings_json FROM users WHERE id = ?').get(userId) as
+          | { settings_json: string }
+          | undefined;
+        if (row && row.settings_json) {
+          const parsed = JSON.parse(row.settings_json);
+          if (parsed && typeof parsed.preferredModels === 'object' && parsed.preferredModels !== null) {
+            userPreferred = parsed.preferredModels;
+          }
+        }
+      } catch (e: any) {
+        this.logger.warn(`Could not read user preferences for ${userId}: ${e.message}`);
+      }
+    }
+
+    const effective: DefaultModelsConfig = {
+      chatModel: userPreferred.chatModel?.trim() || system.chatModel,
+      textToImageModel: userPreferred.textToImageModel?.trim() || system.textToImageModel,
+      imageToImageModel: userPreferred.imageToImageModel?.trim() || system.imageToImageModel,
+    };
+
+    return {
+      system,
+      user: userPreferred,
+      effective,
+      resolved: {
+        chat: this.findModelByIdOrSlug(effective.chatModel, 'chat'),
+        textToImage: this.findModelByIdOrSlug(effective.textToImageModel, 'text-to-image'),
+        imageToImage: this.findModelByIdOrSlug(effective.imageToImageModel, 'image-to-image'),
+      },
+    };
+  }
 }
+

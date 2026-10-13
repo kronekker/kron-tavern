@@ -16,6 +16,13 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TEXT DEFAULT (datetime('now'))
 );
 
+-- Global App Settings (Key-Value Configuration for System Defaults)
+CREATE TABLE IF NOT EXISTS app_settings (
+  key TEXT PRIMARY KEY,
+  value_json TEXT NOT NULL,
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
 -- Durable User Personas (Always Private to Creator)
 CREATE TABLE IF NOT EXISTS personas (
   id TEXT PRIMARY KEY,

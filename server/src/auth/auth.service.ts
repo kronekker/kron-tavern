@@ -207,4 +207,46 @@ export class AuthService {
   getDecryptedOpenRouterKey(userId: string) {
     return this.getDecryptedWiroKey(userId);
   }
+
+  updatePreferredModels(
+    userId: string,
+    preferred: { chatModel?: string | null; textToImageModel?: string | null; imageToImageModel?: string | null },
+  ): UserResponse {
+    const db = this.dbService.getDb();
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(userId) as any;
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
+
+    let settings: Record<string, any> = {};
+    try {
+      settings = JSON.parse(user.settings_json || '{}');
+    } catch {
+      settings = {};
+    }
+
+    const currentPreferred = (settings.preferredModels as Record<string, any>) || {};
+    const newPreferred: Record<string, string | null> = { ...currentPreferred };
+
+    if (preferred.chatModel !== undefined) {
+      newPreferred['chatModel'] = preferred.chatModel ? preferred.chatModel.trim() : null;
+    }
+    if (preferred.textToImageModel !== undefined) {
+      newPreferred['textToImageModel'] = preferred.textToImageModel ? preferred.textToImageModel.trim() : null;
+    }
+    if (preferred.imageToImageModel !== undefined) {
+      newPreferred['imageToImageModel'] = preferred.imageToImageModel ? preferred.imageToImageModel.trim() : null;
+    }
+
+    settings.preferredModels = newPreferred;
+    const settingsJson = JSON.stringify(settings);
+
+    db.prepare('UPDATE users SET settings_json = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      settingsJson,
+      userId,
+    );
+
+    return this.getUserProfile(userId);
+  }
 }
+

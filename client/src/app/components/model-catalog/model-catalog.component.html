@@ -63,6 +63,14 @@
         <span class="stat-pill">
           🕒 Synced: <strong>{{ formatDate(stats()?.lastUpdated) }}</strong>
         </span>
+        @if (activeDefaults(); as defs) {
+          <span class="stat-pill active-defaults-pill" title="Current multimodal model defaults for conversations, avatars, and scenes">
+            🎯 Active Defaults:
+            <span class="def-role">💬 {{ defs.resolved.chat?.title || defs.effective.chatModel }}</span> •
+            <span class="def-role">🎨 {{ defs.resolved.textToImage?.title || defs.effective.textToImageModel }}</span> •
+            <span class="def-role">🖼️ {{ defs.resolved.imageToImage?.title || defs.effective.imageToImageModel }}</span>
+          </span>
+        }
         @if (authService.isAdmin() && !authService.hasWiroKey()) {
           <span class="stat-pill warning">
             ⚠️ Admin Wiro API key not set in Profile
@@ -180,6 +188,16 @@
                   <span class="badge category-badge" [class]="getCategoryBadgeClass(model.type)">
                     {{ getCategoryLabel(model.type) }}
                   </span>
+                  @if (isSystemDefault(model)) {
+                    <span class="badge default-badge" title="Tavern-wide Default Model">
+                      👑 Tavern Default
+                    </span>
+                  }
+                  @if (isUserPreferred(model)) {
+                    <span class="badge user-pref-badge" title="Your Personal Preferred Model">
+                      🎯 My Preferred
+                    </span>
+                  }
                   @if (model.computingtime) {
                     <span class="badge time-badge" title="Estimated computing time">
                       ⏱️ {{ model.computingtime }}
@@ -305,6 +323,36 @@
           </div>
 
           <div class="drawer-header-actions">
+            @if (['chat', 'text-to-image', 'image-to-image'].includes(selModel.type)) {
+              @if (authService.isAdmin()) {
+                <button 
+                  class="btn-drawer-action default-admin-btn" 
+                  [class.active]="isSystemDefault(selModel)"
+                  (click)="setAsSystemDefault(selModel)"
+                  title="Make this the Tavern System Default for {{ selModel.type }}">
+                  {{ isSystemDefault(selModel) ? '👑 Tavern Default' : '👑 Set as Tavern Default' }}
+                </button>
+              }
+
+              @if (authService.isAuthenticated()) {
+                @if (isUserPreferred(selModel)) {
+                  <button 
+                    class="btn-drawer-action user-pref-btn active" 
+                    (click)="revertUserPreference(selModel)"
+                    title="Remove override and revert to Tavern Default">
+                    🎯 Preferred (Click to Revert)
+                  </button>
+                } @else {
+                  <button 
+                    class="btn-drawer-action user-pref-btn" 
+                    (click)="setAsUserPreferred(selModel)"
+                    title="Set as your personal preferred model for {{ selModel.type }}">
+                    🎯 Set as My Preferred
+                  </button>
+                }
+              }
+            }
+
             <button 
               class="btn-drawer-refresh" 
               (click)="refreshCurrentDetail()" 

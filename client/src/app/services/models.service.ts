@@ -102,6 +102,29 @@ export interface RefreshCatalogResponse {
   message: string;
 }
 
+export interface DefaultModelsConfig {
+  chatModel: string;
+  textToImageModel: string;
+  imageToImageModel: string;
+}
+
+export interface UserPreferredModels {
+  chatModel?: string | null;
+  textToImageModel?: string | null;
+  imageToImageModel?: string | null;
+}
+
+export interface ResolvedActiveModels {
+  system: DefaultModelsConfig;
+  user: UserPreferredModels;
+  effective: DefaultModelsConfig;
+  resolved: {
+    chat: ModelSummary | null;
+    textToImage: ModelSummary | null;
+    imageToImage: ModelSummary | null;
+  };
+}
+
 @Injectable({
   providedIn: 'root',
 })
@@ -121,6 +144,18 @@ export class ModelsService {
 
   getStats(): Observable<ModelCatalogStats> {
     return this.http.get<ModelCatalogStats>('/api/models/stats');
+  }
+
+  getActiveDefaults(): Observable<ResolvedActiveModels> {
+    return this.http.get<ResolvedActiveModels>('/api/models/defaults');
+  }
+
+  updateSystemDefaults(config: Partial<DefaultModelsConfig>): Observable<ResolvedActiveModels> {
+    return this.http.put<ResolvedActiveModels>('/api/models/defaults/system', config);
+  }
+
+  updateUserDefaults(models: UserPreferredModels): Observable<ResolvedActiveModels> {
+    return this.http.put<ResolvedActiveModels>('/api/models/defaults/user', models);
   }
 
   getCategories(): Observable<CategoryMetadataResponse> {
@@ -160,3 +195,4 @@ export class ModelsService {
     );
   }
 }
+

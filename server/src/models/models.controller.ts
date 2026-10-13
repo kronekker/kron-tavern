@@ -12,11 +12,33 @@ import {
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
-import { ModelsService, BILLING_METHODS_REFERENCE } from './models.service.js';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiBody } from '@nestjs/swagger';
+import {
+  ModelsService,
+  BILLING_METHODS_REFERENCE,
+  type DefaultModelsConfig,
+  type UserPreferredModels,
+} from './models.service.js';
 import { AdminGuard } from '../auth/admin.guard.js';
 import { AuthService } from '../auth/auth.service.js';
-import type { AuthenticatedRequest } from '../auth/auth.guard.js';
+import {
+  AuthGuard,
+  OptionalAuthGuard,
+  type AuthenticatedRequest,
+  type OptionalAuthenticatedRequest,
+} from '../auth/auth.guard.js';
+
+export class UpdateSystemDefaultsDto {
+  chatModel?: string;
+  textToImageModel?: string;
+  imageToImageModel?: string;
+}
+
+export class UpdateUserPreferredModelsDto {
+  chatModel?: string | null;
+  textToImageModel?: string | null;
+  imageToImageModel?: string | null;
+}
 
 @ApiTags('models')
 @Controller('models')
@@ -25,6 +47,60 @@ export class ModelsController {
     private readonly modelsService: ModelsService,
     private readonly authService: AuthService,
   ) {}
+
+  @Get('defaults')
+  @UseGuards(OptionalAuthGuard)
+  @ApiOperation({
+    summary:
+      'Get resolved multimodal default models (Chat, Avatar T2I, Scenes I2I) combining tavern admin defaults and user personal overrides',
+  })
+  getDefaults(@Req() req: OptionalAuthenticatedRequest) {
+    return this.modelsService.getActiveModels(req.user?.userId);
+  }
+
+  @Put('defaults/system')
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Admin only: Update tavern-wide default AI models for Chat LLM, Text-to-Image avatar, and Image-to-Image scenes',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        chatModel: { type: 'string', example: 'openai/gpt-6.1-sol' },
+        textToImageModel: { type: 'string', example: 'google/nano banana 2.1 advanced' },
+        imageToImageModel: { type: 'string', example: 'wiro-partners/qwen image edit uncensored' },
+      },
+    },
+  })
+  updateSystemDefaults(@Body() body: UpdateSystemDefaultsDto) {
+    return this.modelsService.setSystemDefaultModels(body);
+  }
+
+  @Put('defaults/user')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'User preferred AI models: set personal preferred model overrides (pass null or empty string to revert to tavern admin default)',
+  })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: {
+        chatModel: { type: 'string', nullable: true, example: 'claude/opus 5.5' },
+        textToImageModel: { type: 'string', nullable: true, example: null },
+        imageToImageModel: { type: 'string', nullable: true, example: null },
+      },
+    },
+  })
+  updateUserDefaults(@Req() req: AuthenticatedRequest, @Body() body: UpdateUserPreferredModelsDto) {
+    this.authService.updatePreferredModels(req.user.userId, body);
+    return this.modelsService.getActiveModels(req.user.userId);
+  }
+
 
   @Get()
   @ApiOperation({ summary: 'Browse shared Wiro.ai models catalog (filtered by category or search)' })

@@ -34,6 +34,7 @@ const ALLOWED_TABLES = [
   'session_participants',
   'messages',
   'turn_traces',
+  'app_settings',
 ] as const;
 
 export type AllowedTableName = (typeof ALLOWED_TABLES)[number];
@@ -103,6 +104,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
 
     this.db.exec(schemaSql);
+
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
 
     // Apply incremental column migrations for existing databases
     this.ensureColumn('users', 'email', 'TEXT');
@@ -220,8 +229,37 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (!ALLOWED_TABLES.includes(tableName as AllowedTableName)) {
       throw new Error(`Table '${tableName}' is not allowed.`);
     }
-    const info = this.db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).run(id);
+    const idColumn = tableName === 'app_settings' ? 'key' : 'id';
+    const info = this.db.prepare(`DELETE FROM ${tableName} WHERE ${idColumn} = ?`).run(id);
     return info.changes > 0;
+  }
+
+  getSetting<T = any>(key: string, defaultValue: T): T {
+    try {
+      const row = this.db.prepare('SELECT value_json FROM app_settings WHERE key = ?').get(key) as
+        | { value_json: string }
+        | undefined;
+      if (row && row.value_json) {
+        return JSON.parse(row.value_json) as T;
+      }
+    } catch (e: any) {
+      this.logger.warn(`Could not read app setting '${key}': ${e.message}`);
+    }
+    return defaultValue;
+  }
+
+  setSetting(key: string, value: any): void {
+    const valueJson = JSON.stringify(value);
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `
+      INSERT INTO app_settings (key, value_json, updated_at)
+      VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_at = excluded.updated_at
+    `,
+      )
+      .run(key, valueJson, now);
   }
 
   runVacuum(): void {
@@ -369,6 +407,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         settings_json TEXT DEFAULT '{}',
         is_admin INTEGER DEFAULT 0,
         created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
         updated_at TEXT DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS personas (

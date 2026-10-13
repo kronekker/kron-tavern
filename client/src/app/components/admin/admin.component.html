@@ -147,6 +147,109 @@
             }
           </div>
 
+          <!-- Tavern System Default Models Configuration -->
+          <div class="section-card defaults-config-card">
+            <div class="section-header-row">
+              <div>
+                <h3>🏰 Tavern Default Multimodal Models</h3>
+                <p class="section-desc">
+                  Select the system-wide default models for chat dialogues, character avatar creation (Text-to-Image), 
+                  and scene/expression variations (Image-to-Image). Users will inherit these defaults unless they specify personal overrides.
+                </p>
+              </div>
+              <div class="sync-actions">
+                <button 
+                  class="btn-action primary" 
+                  (click)="saveSystemDefaults()" 
+                  [disabled]="savingDefaults() || loading()">
+                  {{ savingDefaults() ? '💾 Saving...' : '💾 Save System Defaults' }}
+                </button>
+              </div>
+            </div>
+
+            <div class="defaults-selector-grid">
+              
+              <!-- 1. Chat LLM Default -->
+              <div class="model-select-group">
+                <div class="group-header">
+                  <span class="icon">💬</span>
+                  <label for="admin-default-chat">Default Chat Model</label>
+                  <span class="type-pill">Chat & Reasoning</span>
+                </div>
+                <select 
+                  id="admin-default-chat" 
+                  class="model-dropdown" 
+                  [ngModel]="selectedDefaultChat()" 
+                  (ngModelChange)="selectedDefaultChat.set($event)">
+                  @for (m of chatModels(); track m.id) {
+                    <option [value]="m.slug">
+                      {{ m.title }} ({{ m.pricing.headlineBadge }})
+                    </option>
+                  }
+                </select>
+                @if (getSelectedChatSummary(); as sChat) {
+                  <div class="model-preview-bar">
+                    <span class="preview-badge">{{ sChat.pricing.headlineBadge }}</span>
+                    <span class="preview-slug"><code>{{ sChat.slug }}</code></span>
+                  </div>
+                }
+              </div>
+
+              <!-- 2. Text-to-Image Avatar Default -->
+              <div class="model-select-group">
+                <div class="group-header">
+                  <span class="icon">🎨</span>
+                  <label for="admin-default-t2i">Default Avatar Model (Text-to-Image)</label>
+                  <span class="type-pill">Avatar Portraits</span>
+                </div>
+                <select 
+                  id="admin-default-t2i" 
+                  class="model-dropdown" 
+                  [ngModel]="selectedDefaultT2I()" 
+                  (ngModelChange)="selectedDefaultT2I.set($event)">
+                  @for (m of textToImageModels(); track m.id) {
+                    <option [value]="m.slug">
+                      {{ m.title }} ({{ m.pricing.headlineBadge }})
+                    </option>
+                  }
+                </select>
+                @if (getSelectedT2ISummary(); as sT2I) {
+                  <div class="model-preview-bar">
+                    <span class="preview-badge">{{ sT2I.pricing.headlineBadge }}</span>
+                    <span class="preview-slug"><code>{{ sT2I.slug }}</code></span>
+                  </div>
+                }
+              </div>
+
+              <!-- 3. Image-to-Image Scene Default -->
+              <div class="model-select-group">
+                <div class="group-header">
+                  <span class="icon">🖼️</span>
+                  <label for="admin-default-i2i">Default Scene & Pose Model (Image-to-Image)</label>
+                  <span class="type-pill">Scene / Expression</span>
+                </div>
+                <select 
+                  id="admin-default-i2i" 
+                  class="model-dropdown" 
+                  [ngModel]="selectedDefaultI2I()" 
+                  (ngModelChange)="selectedDefaultI2I.set($event)">
+                  @for (m of imageToImageModels(); track m.id) {
+                    <option [value]="m.slug">
+                      {{ m.title }} ({{ m.pricing.headlineBadge }})
+                    </option>
+                  }
+                </select>
+                @if (getSelectedI2ISummary(); as sI2I) {
+                  <div class="model-preview-bar">
+                    <span class="preview-badge">{{ sI2I.pricing.headlineBadge }}</span>
+                    <span class="preview-slug"><code>{{ sI2I.slug }}</code></span>
+                  </div>
+                }
+              </div>
+
+            </div>
+          </div>
+
           <!-- Tables Summary -->
           <div class="section-card">
             <h3>Registered Tables & Row Counts</h3>

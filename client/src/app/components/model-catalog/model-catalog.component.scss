@@ -197,6 +197,17 @@
         color: #fbbf24;
         border-color: #b45309;
       }
+
+      &.active-defaults-pill {
+        border-color: rgba(139, 92, 246, 0.4);
+        background: rgba(139, 92, 246, 0.12);
+        color: #c084fc;
+
+        .def-role {
+          color: #f1f5f9;
+          font-weight: 500;
+        }
+      }
     }
   }
 
@@ -427,6 +438,18 @@
         background: rgba(15, 23, 42, 0.85);
         color: #cbd5e1;
         border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .default-badge {
+        background: rgba(139, 92, 246, 0.9);
+        color: #fff;
+        border: 1px solid #c084fc;
+      }
+
+      .user-pref-badge {
+        background: rgba(245, 158, 11, 0.9);
+        color: #fff;
+        border: 1px solid #fde047;
       }
     }
   }
@@ -782,6 +805,52 @@
       display: flex;
       align-items: center;
       gap: 0.6rem;
+
+      .btn-drawer-action {
+        border-radius: 6px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        padding: 0.4rem 0.75rem;
+        cursor: pointer;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+
+        &.default-admin-btn {
+          background: #1e293b;
+          border: 1px solid #8b5cf6;
+          color: #c084fc;
+
+          &:hover {
+            background: #8b5cf6;
+            color: #fff;
+          }
+
+          &.active {
+            background: #8b5cf6;
+            color: #fff;
+            border-color: #a855f7;
+          }
+        }
+
+        &.user-pref-btn {
+          background: #1e293b;
+          border: 1px solid #f59e0b;
+          color: #fbbf24;
+
+          &:hover {
+            background: #f59e0b;
+            color: #fff;
+          }
+
+          &.active {
+            background: #f59e0b;
+            color: #fff;
+            border-color: #d97706;
+          }
+        }
+      }
 
       .btn-drawer-refresh {
         background: #1e293b;
