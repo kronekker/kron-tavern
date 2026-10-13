@@ -35,6 +35,7 @@ const ALLOWED_TABLES = [
   'messages',
   'turn_traces',
   'app_settings',
+  'session_compressions',
 ] as const;
 
 export type AllowedTableName = (typeof ALLOWED_TABLES)[number];
@@ -113,6 +114,20 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS session_compressions (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        boundary_message_id TEXT NOT NULL,
+        summary_text TEXT NOT NULL,
+        token_count_before INTEGER,
+        token_count_after INTEGER,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+
     // Apply incremental column migrations for existing databases
     this.ensureColumn('users', 'email', 'TEXT');
     this.ensureColumn('users', 'wiro_key_encrypted', 'TEXT');
@@ -120,6 +135,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     this.ensureColumn('keyword_memories', 'persona_id', 'TEXT REFERENCES personas(id) ON DELETE CASCADE');
     this.ensureColumn('keyword_memories', 'scope', "TEXT DEFAULT 'session'");
     this.ensureColumn('episodic_memories', 'scope', "TEXT DEFAULT 'session'");
+
+    // Sessions multimodal & compression migrations
+    this.ensureColumn('sessions', 'character_id', 'TEXT REFERENCES characters(id) ON DELETE CASCADE');
+    this.ensureColumn('sessions', 'chat_model', 'TEXT');
+    this.ensureColumn('sessions', 'text_to_image_model', 'TEXT');
+    this.ensureColumn('sessions', 'image_to_image_model', 'TEXT');
+    this.ensureColumn('sessions', 'active_compression_id', 'TEXT REFERENCES session_compressions(id) ON DELETE SET NULL');
+
+    // Messages reroll and edit tracking migrations
+    this.ensureColumn('messages', 'reroll_parent_id', 'TEXT');
+    this.ensureColumn('messages', 'updated_at', 'TEXT');
 
     try {
       this.db.exec("UPDATE users SET wiro_key_encrypted = openrouter_key_encrypted WHERE wiro_key_encrypted IS NULL AND openrouter_key_encrypted IS NOT NULL;");
@@ -456,12 +482,28 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
       );
+      CREATE TABLE IF NOT EXISTS session_compressions (
+        id TEXT PRIMARY KEY,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        boundary_message_id TEXT NOT NULL,
+        summary_text TEXT NOT NULL,
+        token_count_before INTEGER,
+        token_count_after INTEGER,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      );
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
         title TEXT NOT NULL,
         is_group INTEGER DEFAULT 0,
         active_persona_id TEXT REFERENCES personas(id) ON DELETE SET NULL,
+        chat_model TEXT,
+        text_to_image_model TEXT,
+        image_to_image_model TEXT,
+        active_compression_id TEXT REFERENCES session_compressions(id) ON DELETE SET NULL,
         context_strategy TEXT DEFAULT 'episodic_sliding',
         context_threshold_percent INTEGER DEFAULT 75,
         rolling_summary TEXT,
@@ -486,8 +528,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         content TEXT NOT NULL,
         is_canonical INTEGER DEFAULT 1,
         ab_group_id TEXT,
+        reroll_parent_id TEXT,
         model_used TEXT,
-        created_at TEXT DEFAULT (datetime('now'))
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
       );
       CREATE TABLE IF NOT EXISTS episodic_memories (
         id TEXT PRIMARY KEY,

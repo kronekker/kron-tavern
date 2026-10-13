@@ -10,7 +10,19 @@
     </div>
 
     <div class="nav-actions">
-      <button class="nav-btn primary" (click)="toggleCharacters()" title="Browse & Create AI Companions">
+      @if (activeSessionId()) {
+        <button class="nav-btn chat-active-btn" (click)="activeSessionId.set(activeSessionId())" title="Return to Active Chat Scene">
+          <span>💬 Current Scene</span>
+        </button>
+      }
+
+      @if (authService.isAuthenticated()) {
+        <button class="nav-btn primary" (click)="onRequestNewSession()" title="Start New Roleplay Session">
+          <span>⚔️ Start Chat</span>
+        </button>
+      }
+
+      <button class="nav-btn secondary" (click)="toggleCharacters()" title="Browse & Create AI Companions">
         <span>🎭 Characters</span>
       </button>
 
@@ -53,85 +65,88 @@
   </header>
 
   <!-- Main Chat / Stage Container -->
-  <main class="app-main">
-    <div class="stage-placeholder">
-      <div class="welcome-card">
-        <div class="welcome-header">
-          <span class="welcome-badge">🚀 Foundation Ready</span>
-          <h2>Welcome to kron-tavern</h2>
-          <p>
-            An immersion-focused AI companion and roleplay system with zero external infrastructure, 
-            embedded vector memory, and total prompt auditability.
-          </p>
-        </div>
+  <main class="app-main" [class.has-stage]="!!activeSessionId()">
+    @if (activeSessionId(); as sid) {
+      <app-chat-stage
+        [sessionId]="sid"
+        (close)="onCloseStage()"
+        (switchSession)="onSwitchSession($event)"
+        (startNewSessionRequest)="onRequestNewSession()"
+      />
+    } @else {
+      <div class="stage-placeholder">
+        <div class="welcome-card">
+          <div class="welcome-header">
+            <span class="welcome-badge">🚀 Foundation Ready</span>
+            <h2>Welcome to kron-tavern</h2>
+            <p>
+              An immersion-focused AI companion and roleplay system with zero external infrastructure, 
+              embedded vector memory, and total prompt auditability.
+            </p>
+          </div>
 
-        <div class="features-list">
-          <div class="feature-item">
-            <span class="icon">🤖</span>
-            <div>
-              <strong>Wiro.ai Multimodal Intelligence</strong>
-              <p>Shared model catalog for Chat LLMs, portrait synthesis (Text-to-Image), expression poses (Image-to-Image), and video animation.</p>
+          <div class="features-list">
+            <div class="feature-item">
+              <span class="icon">🤖</span>
+              <div>
+                <strong>Wiro.ai Multimodal Intelligence</strong>
+                <p>Shared model catalog for Chat LLMs, portrait synthesis (Text-to-Image), expression poses (Image-to-Image), and video animation.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <span class="icon">👤</span>
+              <div>
+                <strong>User Scopes & Entitlements</strong>
+                <p>Private and public characters, user-private personas, and session-specific vs user-global memories.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <span class="icon">💾</span>
+              <div>
+                <strong>Embedded SQLite & sqlite-vec</strong>
+                <p>Zero-dependency relational and 384-dimensional vector storage in a single local database file.</p>
+              </div>
+            </div>
+
+            <div class="feature-item">
+              <span class="icon">🔍</span>
+              <div>
+                <strong>Full Prompt Traceability</strong>
+                <p>Turn-by-turn prompt inspection, vector similarity attribution, and token telemetry.</p>
+              </div>
             </div>
           </div>
 
-          <div class="feature-item">
-            <span class="icon">👤</span>
-            <div>
-              <strong>User Scopes & Entitlements</strong>
-              <p>Private and public characters, user-private personas, and session-specific vs user-global memories.</p>
-            </div>
-          </div>
-
-          <div class="feature-item">
-            <span class="icon">💾</span>
-            <div>
-              <strong>Embedded SQLite & sqlite-vec</strong>
-              <p>Zero-dependency relational and 384-dimensional vector storage in a single local database file.</p>
-            </div>
-          </div>
-
-          <div class="feature-item">
-            <span class="icon">🔍</span>
-            <div>
-              <strong>Full Prompt Traceability</strong>
-              <p>Turn-by-turn prompt inspection, vector similarity attribution, and token telemetry.</p>
-            </div>
-          </div>
-        </div>
-
-        <div class="cta-actions">
-          <button class="btn-cta primary" (click)="toggleCharacters()">
-            🎭 Browse & Create Characters
-          </button>
-
-          @if (authService.isAuthenticated()) {
-            <button class="btn-cta secondary" (click)="togglePersonas()">
-              👤 My Roleplay Personas
-            </button>
-          }
-
-          <button class="btn-cta secondary" (click)="toggleModels()">
-            🤖 AI Models Catalog
-          </button>
-
-          @if (authService.isAuthenticated()) {
-            @if (authService.isAdmin()) {
-              <button class="btn-cta secondary" (click)="toggleAdmin()">
-                ⚙️ DB & Admin Panel
+          <div class="cta-actions">
+            @if (authService.isAuthenticated()) {
+              <button class="btn-cta primary" (click)="onRequestNewSession()">
+                ⚔️ Start Roleplay Session
               </button>
             } @else {
-              <button class="btn-cta secondary" (click)="toggleAuth()">
-                🔑 API Keys & Settings
+              <button class="btn-cta primary" (click)="toggleAuth()">
+                🔐 Sign In to Start Playing
               </button>
             }
-          } @else {
-            <button class="btn-cta secondary" (click)="toggleAuth()">
-              🔐 Sign In / Register
+
+            <button class="btn-cta secondary" (click)="toggleCharacters()">
+              🎭 Browse Characters
             </button>
-          }
+
+            @if (authService.isAuthenticated()) {
+              <button class="btn-cta secondary" (click)="togglePersonas()">
+                👤 My Roleplay Personas
+              </button>
+            }
+
+            <button class="btn-cta secondary" (click)="toggleModels()">
+              🤖 AI Models Catalog
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+    }
   </main>
 
   <!-- Characters Modal -->
@@ -142,6 +157,15 @@
   <!-- Personas Modal -->
   @if (showPersonas()) {
     <app-personas (close)="showPersonas.set(false)" />
+  }
+
+  <!-- Session Setup Modal -->
+  @if (showSessionSetup()) {
+    <app-session-setup-modal
+      [initialCharacter]="setupCharacter()"
+      (close)="showSessionSetup.set(false)"
+      (created)="onOpenSession($event)"
+    />
   }
 
   <!-- Admin Popup / Modal -->

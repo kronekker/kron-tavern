@@ -1,0 +1,140 @@
+<div class="modal-backdrop" (click)="close.emit()">
+  <div class="setup-modal-card" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <div class="header-title">
+        <span class="header-icon">⚔️</span>
+        <div>
+          <h3>Start Roleplay Session</h3>
+          <span class="header-sub">Configure your companion, persona, and multimodal AI models</span>
+        </div>
+      </div>
+      <button class="modal-close-btn" (click)="close.emit()">✕</button>
+    </div>
+
+    @if (error()) {
+      <div class="error-banner">
+        <span>⚠️ {{ error() }}</span>
+      </div>
+    }
+
+    <div class="modal-body">
+      <!-- 1. Character Selection & Preview -->
+      <div class="form-group">
+        <label class="group-label">Companion Character</label>
+        <select
+          [ngModel]="selectedCharacterId()"
+          (ngModelChange)="onCharacterChange($event)"
+          class="modal-select"
+        >
+          @for (c of charactersList(); track c.id) {
+            <option [value]="c.id">{{ c.name }} - {{ c.tagline || 'AI Companion' }}</option>
+          }
+        </select>
+      </div>
+
+      <!-- 2. Persona Selection or Quick Creation -->
+      <div class="form-group">
+        <div class="label-row">
+          <label class="group-label">Your Roleplay Persona</label>
+          @if (personasList().length > 0 && !isCreatingQuickPersona()) {
+            <button class="btn-link" (click)="isCreatingQuickPersona.set(true)">+ Quick New Persona</button>
+          } @else if (isCreatingQuickPersona() && personasList().length > 0) {
+            <button class="btn-link" (click)="isCreatingQuickPersona.set(false)">Select Existing Persona</button>
+          }
+        </div>
+
+        @if (!isCreatingQuickPersona()) {
+          <select [(ngModel)]="selectedPersonaId" class="modal-select">
+            @for (p of personasList(); track p.id) {
+              <option [value]="p.id">
+                {{ p.name }} {{ p.is_default ? '(Default)' : '' }} - {{ p.description.slice(0, 50) }}...
+              </option>
+            }
+          </select>
+        } @else {
+          <div class="quick-persona-box">
+            <span class="box-hint">Create your roleplay identity for this scene:</span>
+            <input
+              type="text"
+              [(ngModel)]="quickPersonaName"
+              placeholder="Your Persona Name (e.g. Alistair the Artificer)"
+              class="modal-input"
+            />
+            <textarea
+              [(ngModel)]="quickPersonaDesc"
+              rows="2"
+              placeholder="Short description of your background, motivations, or appearance..."
+              class="modal-textarea"
+            ></textarea>
+          </div>
+        }
+      </div>
+
+      <!-- 3. Session Title -->
+      <div class="form-group">
+        <label class="group-label">Session Title</label>
+        <input
+          type="text"
+          [(ngModel)]="sessionTitle"
+          class="modal-input"
+          placeholder="e.g. Alchemy in the Undercroft"
+        />
+      </div>
+
+      <!-- 4. Multimodal Model Configuration (Collapsible) -->
+      <div class="models-section">
+        <button
+          type="button"
+          class="models-toggle-btn"
+          (click)="showAdvancedModels.set(!showAdvancedModels())"
+        >
+          <span>🤖 Multimodal AI Models Triad</span>
+          <span class="toggle-arrow">{{ showAdvancedModels() ? '▲ Hide' : '▼ Customize' }}</span>
+        </button>
+
+        @if (showAdvancedModels()) {
+          <div class="models-dropdowns">
+            <div class="model-field">
+              <label>💬 Chat Dialogue Model</label>
+              <select [(ngModel)]="chatModel" class="modal-select">
+                @for (m of chatModelsList(); track m.slug) {
+                  <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
+                }
+              </select>
+            </div>
+
+            <div class="model-field">
+              <label>🎨 Avatar Generation (Text-to-Image)</label>
+              <select [(ngModel)]="textToImageModel" class="modal-select">
+                @for (m of textToImageModelsList(); track m.slug) {
+                  <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
+                }
+              </select>
+            </div>
+
+            <div class="model-field">
+              <label>🖼️ Scene & Expression (Image-to-Image)</label>
+              <select [(ngModel)]="imageToImageModel" class="modal-select">
+                @for (m of imageToImageModelsList(); track m.slug) {
+                  <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
+                }
+              </select>
+            </div>
+          </div>
+        }
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn-sub ghost" (click)="close.emit()" [disabled]="creating()">Cancel</button>
+      <button class="btn-sub primary start-btn" (click)="startSession()" [disabled]="creating()">
+        @if (creating()) {
+          <span class="spinner-small"></span>
+          <span>Entering Scene...</span>
+        } @else {
+          <span>Enter Tavern & Chat</span>
+        }
+      </button>
+    </div>
+  </div>
+</div>

@@ -10,6 +10,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { ModelsModule } from './models/models.module.js';
 import { CharactersModule } from './characters/characters.module.js';
 import { PersonasModule } from './personas/personas.module.js';
+import { SessionsModule } from './sessions/sessions.module.js';
 
 // Locate production Angular SPA build if present
 const candidatePaths = [
@@ -27,6 +28,7 @@ const staticPath = candidatePaths.find((p) => existsSync(p)) ?? null;
     AdminModule,
     CharactersModule,
     PersonasModule,
+    SessionsModule,
     ...(staticPath
       ? [
           ServeStaticModule.forRoot({

@@ -76,15 +76,33 @@ CREATE TABLE IF NOT EXISTS keyword_memories (
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
+  active_persona_id TEXT REFERENCES personas(id) ON DELETE SET NULL,
   title TEXT NOT NULL,
   is_group INTEGER DEFAULT 0,
-  active_persona_id TEXT REFERENCES personas(id) ON DELETE SET NULL,
+  chat_model TEXT,
+  text_to_image_model TEXT,
+  image_to_image_model TEXT,
+  active_compression_id TEXT REFERENCES session_compressions(id) ON DELETE SET NULL,
   context_strategy TEXT DEFAULT 'episodic_sliding', -- 'episodic_sliding', 'rolling_summary', 'selective_pruning', 'fifo'
   context_threshold_percent INTEGER DEFAULT 75,
   rolling_summary TEXT,
   is_ab_mode INTEGER DEFAULT 0,
   ab_model_a TEXT,
   ab_model_b TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Context Compressions (Preserving Full Chat History while Pruning LLM Context)
+CREATE TABLE IF NOT EXISTS session_compressions (
+  id TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  boundary_message_id TEXT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+  summary_text TEXT NOT NULL,
+  token_count_before INTEGER,
+  token_count_after INTEGER,
+  is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),
   updated_at TEXT DEFAULT (datetime('now'))
 );
@@ -107,8 +125,10 @@ CREATE TABLE IF NOT EXISTS messages (
   content TEXT NOT NULL,
   is_canonical INTEGER DEFAULT 1, -- in A/B test, false for rejected candidate
   ab_group_id TEXT, -- groups candidate responses together
+  reroll_parent_id TEXT, -- links previous candidate/reroll message
   model_used TEXT,
-  created_at TEXT DEFAULT (datetime('now'))
+  created_at TEXT DEFAULT (datetime('now')),
+  updated_at TEXT DEFAULT (datetime('now'))
 );
 
 -- Tier 2: Episodic Memories
