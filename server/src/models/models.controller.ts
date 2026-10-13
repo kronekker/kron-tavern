@@ -8,9 +8,10 @@ import {
   Req,
   HttpException,
   HttpStatus,
+  BadRequestException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
-import { ModelsService } from './models.service.js';
+import { ModelsService, BILLING_METHODS_REFERENCE } from './models.service.js';
 import { AdminGuard } from '../auth/admin.guard.js';
 import { AuthService } from '../auth/auth.service.js';
 import type { AuthenticatedRequest } from '../auth/auth.guard.js';
@@ -37,8 +38,53 @@ export class ModelsController {
     return this.modelsService.getStats();
   }
 
+  @Get('billing-reference')
+  @ApiOperation({ summary: 'Get reference guide and explanations for all Wiro billing methods (cpr, cps, cpo, cpt, etc.)' })
+  getBillingReference() {
+    return {
+      methods: BILLING_METHODS_REFERENCE,
+    };
+  }
+
+  @Get('cached-slugs')
+  @ApiOperation({ summary: 'Get list of model slugs currently cached on local disk in data/models/' })
+  getCachedSlugs() {
+    return {
+      cachedSlugs: this.modelsService.getCachedSlugs(),
+    };
+  }
+
+  @Get('detail')
+  @ApiOperation({
+    summary:
+      'Get full details for a model by slugowner and slugproject. Caches result to data/models/{owner}/{project}.json on disk. If cached, serves from disk unless refresh=true.',
+  })
+  @ApiQuery({ name: 'slugowner', required: true, type: String, example: 'google' })
+  @ApiQuery({ name: 'slugproject', required: true, type: String, example: 'nano-banana-2-lite' })
+  @ApiQuery({ name: 'refresh', required: false, type: Boolean, example: false })
+  async getModelDetail(
+    @Query('slugowner') slugowner: string,
+    @Query('slugproject') slugproject: string,
+    @Query('refresh') refresh?: string | boolean,
+  ) {
+    if (!slugowner || !slugproject) {
+      throw new BadRequestException('Both slugowner and slugproject query parameters are required.');
+    }
+
+    const shouldRefresh = refresh === true || refresh === 'true' || refresh === '1';
+
+    try {
+      return await this.modelsService.getOrFetchDetail(slugowner, slugproject, shouldRefresh);
+    } catch (err: any) {
+      throw new HttpException(
+        `Failed to retrieve model detail for '${slugowner}/${slugproject}': ${err.message}`,
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: 'Get detailed model configuration, parameter schema, and documentation' })
+  @ApiOperation({ summary: 'Get detailed model configuration by ID' })
   getModelDetails(@Param('id') id: string) {
     return this.modelsService.getModelDetails(id);
   }

@@ -6,6 +6,9 @@ import {
   ModelSummary,
   ModelCatalogStats,
   ModelCategoryFilter,
+  CachedModelDetailResponse,
+  BillingMethodSpec,
+  ModelPricingInfo,
 } from '../../services/models.service';
 import { AuthService } from '../../services/auth.service';
 
@@ -25,18 +28,24 @@ export class ModelCatalogComponent implements OnInit {
   // State
   models = signal<ModelSummary[]>([]);
   stats = signal<ModelCatalogStats | null>(null);
+  cachedSlugs = signal<Set<string>>(new Set());
+  billingReference = signal<Record<string, BillingMethodSpec>>({});
   activeFilter = signal<ModelCategoryFilter>('all');
   searchQuery = signal<string>('');
   loading = signal<boolean>(false);
   refreshing = signal<boolean>(false);
 
+  // Billing Guide Modal / Drawer Tab
+  showBillingGuide = signal<boolean>(false);
+
   // Notifications
   notification = signal<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   // Selected model for detail drawer
-  selectedModelId = signal<string | null>(null);
-  selectedModelDetails = signal<any | null>(null);
+  selectedModel = signal<ModelSummary | null>(null);
+  selectedDetailResponse = signal<CachedModelDetailResponse | null>(null);
   loadingDetails = signal<boolean>(false);
+  activeDetailTab = signal<'specs' | 'pricing' | 'schema' | 'raw'>('specs');
 
   // Pagination for smooth rendering of hundreds of models
   currentPage = signal<number>(1);
@@ -58,7 +67,9 @@ export class ModelCatalogComponent implements OnInit {
           m.title.toLowerCase().includes(q) ||
           m.slug.toLowerCase().includes(q) ||
           m.slugowner.toLowerCase().includes(q) ||
-          m.description.toLowerCase().includes(q),
+          m.description.toLowerCase().includes(q) ||
+          m.pricing?.headlineBadge?.toLowerCase().includes(q) ||
+          m.pricing?.primaryMethodName?.toLowerCase().includes(q),
       );
     }
 
@@ -77,6 +88,8 @@ export class ModelCatalogComponent implements OnInit {
 
   ngOnInit() {
     this.loadCatalog();
+    this.loadCachedSlugs();
+    this.loadBillingReference();
   }
 
   loadCatalog() {
@@ -95,6 +108,37 @@ export class ModelCatalogComponent implements OnInit {
         });
       },
     });
+  }
+
+  loadCachedSlugs() {
+    this.modelsService.getCachedSlugs().subscribe({
+      next: (res) => {
+        this.cachedSlugs.set(new Set(res.cachedSlugs || []));
+      },
+      error: (err) => {
+        console.error('Failed to load cached slugs', err);
+      },
+    });
+  }
+
+  loadBillingReference() {
+    this.modelsService.getBillingReference().subscribe({
+      next: (res) => {
+        this.billingReference.set(res.methods || {});
+      },
+      error: (err) => {
+        console.error('Failed to load billing reference', err);
+      },
+    });
+  }
+
+  cleanSlug(val: string): string {
+    return (val || 'unknown').toLowerCase().trim().replace(/[^a-z0-9_-]/g, '-').replace(/-+/g, '-');
+  }
+
+  isModelCached(model: ModelSummary): boolean {
+    const slugKey = `${this.cleanSlug(model.slugowner)}/${this.cleanSlug(model.slugproject)}`;
+    return this.cachedSlugs().has(slugKey);
   }
 
   setFilter(filter: ModelCategoryFilter) {
@@ -134,6 +178,7 @@ export class ModelCatalogComponent implements OnInit {
           message: res.message || 'Models successfully synchronized from Wiro.ai!',
         });
         this.loadCatalog();
+        this.loadCachedSlugs();
       },
       error: (err) => {
         this.refreshing.set(false);
@@ -145,26 +190,42 @@ export class ModelCatalogComponent implements OnInit {
     });
   }
 
-  inspectModel(model: ModelSummary) {
-    this.selectedModelId.set(model.id);
-    this.selectedModelDetails.set(null);
+  // Display or Refresh & Display specific model detail
+  displayModel(model: ModelSummary, refresh = false) {
+    this.selectedModel.set(model);
+    this.selectedDetailResponse.set(null);
     this.loadingDetails.set(true);
+    this.activeDetailTab.set('specs');
 
-    this.modelsService.getModelDetails(model.id).subscribe({
-      next: (details) => {
-        this.selectedModelDetails.set(details);
+    this.modelsService.getModelDetail(model.slugowner, model.slugproject, refresh).subscribe({
+      next: (res) => {
+        this.selectedDetailResponse.set(res);
         this.loadingDetails.set(false);
+        // Add to cached slugs set
+        const slugKey = `${this.cleanSlug(model.slugowner)}/${this.cleanSlug(model.slugproject)}`;
+        const updated = new Set(this.cachedSlugs());
+        updated.add(slugKey);
+        this.cachedSlugs.set(updated);
       },
-      error: () => {
-        this.selectedModelDetails.set(model);
+      error: (err) => {
         this.loadingDetails.set(false);
+        this.notification.set({
+          type: 'error',
+          message: err.error?.message || `Failed to fetch details for ${model.title}: ${err.message}`,
+        });
       },
     });
   }
 
+  refreshCurrentDetail() {
+    const m = this.selectedModel();
+    if (!m) return;
+    this.displayModel(m, true);
+  }
+
   closeDetails() {
-    this.selectedModelId.set(null);
-    this.selectedModelDetails.set(null);
+    this.selectedModel.set(null);
+    this.selectedDetailResponse.set(null);
   }
 
   getCategoryBadgeClass(type: string): string {
@@ -201,15 +262,20 @@ export class ModelCatalogComponent implements OnInit {
     }
   }
 
-  parseDynamicPrice(dynamicprice: any): any[] {
-    if (!dynamicprice) return [];
-    try {
-      if (typeof dynamicprice === 'string') {
-        return JSON.parse(dynamicprice);
-      }
-      return Array.isArray(dynamicprice) ? dynamicprice : [];
-    } catch {
-      return [];
+  getPricingPillClass(pricing?: ModelPricingInfo): string {
+    if (!pricing) return 'pill-neutral';
+    switch (pricing.billingType) {
+      case 'token-based':
+        return 'pill-token';
+      case 'flat':
+        return 'pill-flat';
+      case 'tiered':
+        return 'pill-tiered';
+      case 'approximate':
+      case 'per-second':
+        return 'pill-per-sec';
+      default:
+        return 'pill-neutral';
     }
   }
 
@@ -221,5 +287,9 @@ export class ModelCatalogComponent implements OnInit {
     } catch {
       return dateStr;
     }
+  }
+
+  objectKeys(obj: any): string[] {
+    return obj ? Object.keys(obj) : [];
   }
 }

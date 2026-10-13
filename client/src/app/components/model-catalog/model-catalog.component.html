@@ -6,21 +6,28 @@
       <div class="header-left">
         <div class="header-icon">🤖</div>
         <div>
-          <h2>Wiro.ai Model Catalog</h2>
+          <h2>Wiro.ai Multimodal Model Catalog</h2>
           <span class="sub-text">
-            Shared Multimodal Intelligence: Chat LLMs, Text-to-Image, Image-to-Image & Video
+            Shared Catalog: Chat LLMs, Text-to-Image, Image-to-Image, Video & Voice Models
           </span>
         </div>
       </div>
 
       <div class="header-actions">
+        <button 
+          class="btn-guide-toggle" 
+          (click)="showBillingGuide.set(true)" 
+          title="Understand Wiro billing codes (cpr, cps, cpo, cpt, etc.)">
+          <span>📖 Billing Guide</span>
+        </button>
+
         @if (authService.isAdmin()) {
           <button 
             class="btn-sync" 
             (click)="refreshFromWiro()" 
             [disabled]="refreshing() || loading()"
             title="Refresh models from api.wiro.ai using Admin API key">
-            <span>{{ refreshing() ? '🔄 Syncing...' : '🔄 Refresh from Wiro.ai' }}</span>
+            <span>{{ refreshing() ? '🔄 Syncing...' : '🔄 Sync from Wiro.ai' }}</span>
           </button>
         }
         <button class="btn-close" (click)="close.emit()" title="Close">✕</button>
@@ -35,13 +42,16 @@
       </div>
     }
 
-    <!-- Toolbar: Stats & Category Filters -->
+    <!-- Toolbar: Stats, Cache Status & Category Filters -->
     <div class="catalog-toolbar">
       
       <!-- Stats Metadata Bar -->
       <div class="stats-bar">
         <span class="stat-pill">
           📦 <strong>{{ stats()?.total || 0 }}</strong> models cataloged
+        </span>
+        <span class="stat-pill highlight">
+          💾 <strong>{{ cachedSlugs().size }}</strong> models cached on disk (<code>data/models/</code>)
         </span>
         <span class="stat-pill">
           🕒 Synced: <strong>{{ formatDate(stats()?.lastUpdated) }}</strong>
@@ -120,7 +130,7 @@
             type="text" 
             [(ngModel)]="searchQuery" 
             (ngModelChange)="onSearchChange()" 
-            placeholder="Search by title, provider (e.g. ByteDance, OpenAI), slug, or description..." 
+            placeholder="Search by title, provider (e.g. OpenAI, Google, ByteDance), slug, pricing ($0.03, token)..." 
           />
           @if (searchQuery()) {
             <button class="btn-clear" (click)="clearSearch()">✕</button>
@@ -144,8 +154,8 @@
       } @else if (filteredModels().length === 0) {
         <div class="empty-state">
           <span class="empty-icon">🔍</span>
-          <h3>No models found</h3>
-          <p>Try clearing your search query or switching category filters.</p>
+          <h3>No models match your query</h3>
+          <p>Try clearing your search terms or selecting another category filter.</p>
           @if (searchQuery()) {
             <button class="btn-reset" (click)="clearSearch()">Clear Search</button>
           }
@@ -154,7 +164,7 @@
         
         <div class="models-grid">
           @for (model of paginatedModels(); track model.id) {
-            <div class="model-card" (click)="inspectModel(model)">
+            <div class="model-card" (click)="displayModel(model, false)">
               
               <!-- Card Cover Image -->
               <div class="card-cover">
@@ -186,14 +196,58 @@
 
                 <h4 class="model-title" [title]="model.title">{{ model.title }}</h4>
 
+                <!-- Explicit Intelligent Pricing Strip -->
+                <div class="pricing-strip" [class]="getPricingPillClass(model.pricing)">
+                  <div class="pricing-headline">
+                    <span class="price-val">{{ model.pricing.headlineBadge }}</span>
+                    @if (model.pricing.isDynamic && model.pricing.tiers.length > 1) {
+                      <span class="tiers-tag">{{ model.pricing.tiers.length }} tiers</span>
+                    }
+                  </div>
+                  <span class="pricing-subtext">{{ model.pricing.subtext }}</span>
+                </div>
+
                 <p class="model-desc">{{ model.description }}</p>
 
-                <div class="card-footer">
-                  <span class="slug-tag">{{ model.slug }}</span>
-                  <button class="btn-inspect" (click)="$event.stopPropagation(); inspectModel(model)">
-                    Details ➔
-                  </button>
+                <!-- Card Footer with Explicit Cache & Display Actions -->
+                <div class="card-footer" (click)="$event.stopPropagation()">
+                  <div class="cache-indicator">
+                    @if (isModelCached(model)) {
+                      <span class="cache-chip cached" title="Model details cached locally in data/models/">
+                        💾 Cached
+                      </span>
+                    } @else {
+                      <span class="cache-chip remote" title="Detail not yet cached. Display will fetch & save.">
+                        🌐 Remote
+                      </span>
+                    }
+                  </div>
+
+                  <div class="card-btn-group">
+                    @if (isModelCached(model)) {
+                      <button 
+                        class="btn-card-action display" 
+                        (click)="displayModel(model, false)" 
+                        title="Display cached details">
+                        👁️ Display
+                      </button>
+                      <button 
+                        class="btn-card-action refresh" 
+                        (click)="displayModel(model, true)" 
+                        title="Refresh from Wiro.ai and update cache">
+                        🔄 Refresh
+                      </button>
+                    } @else {
+                      <button 
+                        class="btn-card-action primary" 
+                        (click)="displayModel(model, false)" 
+                        title="Fetch from Wiro.ai, cache to disk, and display">
+                        🔍 Display
+                      </button>
+                    }
+                  </div>
                 </div>
+
               </div>
 
             </div>
@@ -227,131 +281,400 @@
 
   </div>
 
-  <!-- Model Detail Inspector Drawer / Modal -->
-  @if (selectedModelId()) {
+  <!-- Model Detail Inspector Drawer -->
+  @if (selectedModel(); as selModel) {
     <div class="detail-backdrop" (click)="closeDetails()">
       <div class="detail-drawer" (click)="$event.stopPropagation()">
         
+        <!-- Drawer Header -->
         <header class="detail-header">
           <div class="detail-title-group">
-            <span class="badge category-badge" [class]="getCategoryBadgeClass(selectedModelDetails()?.type || 'other')">
-              {{ getCategoryLabel(selectedModelDetails()?.type || 'other') }}
+            <div class="header-badges">
+              <span class="badge category-badge" [class]="getCategoryBadgeClass(selModel.type)">
+                {{ getCategoryLabel(selModel.type) }}
+              </span>
+              <span class="badge pricing-badge" [class]="getPricingPillClass(selectedDetailResponse()?.pricing || selModel.pricing)">
+                {{ (selectedDetailResponse()?.pricing || selModel.pricing).headlineBadge }}
+              </span>
+            </div>
+            <h3>{{ selectedDetailResponse()?.detail?.title || selModel.title }}</h3>
+            <span class="detail-slug">
+              {{ selModel.slugowner }}/{{ selModel.slugproject }}
             </span>
-            <h3>{{ selectedModelDetails()?.title || 'Model Details' }}</h3>
-            <span class="detail-slug">{{ selectedModelDetails()?.slugowner }}/{{ selectedModelDetails()?.slugproject }}</span>
           </div>
-          <button class="btn-close" (click)="closeDetails()">✕</button>
+
+          <div class="drawer-header-actions">
+            <button 
+              class="btn-drawer-refresh" 
+              (click)="refreshCurrentDetail()" 
+              [disabled]="loadingDetails()"
+              title="Re-query api.wiro.ai/v1/Tool/Detail and overwrite local JSON cache">
+              🔄 {{ loadingDetails() ? 'Refreshing...' : 'Refresh from Wiro.ai' }}
+            </button>
+            <button class="btn-close" (click)="closeDetails()">✕</button>
+          </div>
         </header>
 
+        <!-- Cache Status Notification Bar -->
+        @if (selectedDetailResponse(); as resp) {
+          <div class="cache-status-bar" [class.from-cache]="resp.fromCache">
+            <div class="status-left">
+              <span class="status-icon">{{ resp.fromCache ? '💾' : '⚡' }}</span>
+              <div>
+                <strong>{{ resp.fromCache ? 'Loaded from Local Disk Cache' : 'Synchronized Live from Wiro.ai' }}</strong>
+                <span class="file-path">File: <code>{{ resp.filePath }}</code> • {{ formatDate(resp.cachedAt) }}</span>
+              </div>
+            </div>
+            <div class="status-right">
+              @if (resp.fromCache) {
+                <button class="btn-refresh-cache-mini" (click)="refreshCurrentDetail()" [disabled]="loadingDetails()">
+                  Re-fetch & Overwrite
+                </button>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Detail Drawer Navigation Tabs -->
+        <nav class="detail-tabs">
+          <button 
+            [class.active]="activeDetailTab() === 'specs'" 
+            (click)="activeDetailTab.set('specs')">
+            📋 Overview & Specs
+          </button>
+          <button 
+            [class.active]="activeDetailTab() === 'pricing'" 
+            (click)="activeDetailTab.set('pricing')">
+            💰 Pricing & Billing
+          </button>
+          <button 
+            [class.active]="activeDetailTab() === 'schema'" 
+            (click)="activeDetailTab.set('schema')">
+            ⚙️ Input Parameters
+          </button>
+          <button 
+            [class.active]="activeDetailTab() === 'raw'" 
+            (click)="activeDetailTab.set('raw')">
+            📝 Raw JSON
+          </button>
+        </nav>
+
+        <!-- Drawer Body Content -->
         <div class="detail-body">
           @if (loadingDetails()) {
             <div class="loading-state">
               <div class="spinner"></div>
-              <span>Fetching model schema and parameters...</span>
+              <span>Fetching model specifications and parameters from Wiro.ai...</span>
             </div>
-          } @else if (selectedModelDetails(); as detail) {
+          } @else if (selectedDetailResponse(); as res) {
 
-            <!-- Media Preview / Samples -->
-            @if (detail.image || (detail.samples && detail.samples.length > 0)) {
-              <div class="detail-section">
-                <h4>Visual Showcase & Samples</h4>
-                <div class="samples-carousel">
-                  @if (detail.image) {
-                    <img [src]="detail.image" class="sample-img cover" alt="Cover" />
-                  }
-                  @for (s of detail.samples || []; track s) {
-                    <img [src]="s" class="sample-img" alt="Sample" />
-                  }
-                </div>
-              </div>
-            }
+            <!-- TAB 1: OVERVIEW & SPECS -->
+            @if (activeDetailTab() === 'specs') {
+              <div class="tab-pane">
+                
+                <!-- Visual Carousel -->
+                @if (res.detail?.image || (res.detail?.samples && res.detail?.samples.length > 0)) {
+                  <div class="detail-section">
+                    <h4>Visual Showcase & Samples</h4>
+                    <div class="samples-carousel">
+                      @if (res.detail?.image) {
+                        <img [src]="res.detail?.image" class="sample-img cover" alt="Cover" />
+                      }
+                      @for (s of res.detail?.samples || []; track s) {
+                        <img [src]="s" class="sample-img" alt="Sample" />
+                      }
+                    </div>
+                  </div>
+                }
 
-            <!-- Metadata Specs -->
-            <div class="detail-section">
-              <h4>Model Specifications</h4>
-              <div class="spec-grid">
-                <div class="spec-item">
-                  <span class="spec-label">Model ID</span>
-                  <span class="spec-value">{{ detail.id }}</span>
-                </div>
-                <div class="spec-item">
-                  <span class="spec-label">Provider</span>
-                  <span class="spec-value">{{ detail.slugowner }}</span>
-                </div>
-                <div class="spec-item">
-                  <span class="spec-label">Computing Time</span>
-                  <span class="spec-value">{{ detail.computingtime || 'Real-time' }}</span>
-                </div>
-                <div class="spec-item">
-                  <span class="spec-label">Category Type</span>
-                  <span class="spec-value">{{ detail.type || 'tool' }}</span>
-                </div>
-              </div>
-            </div>
-
-            <!-- Pricing Breakdown -->
-            @if (parseDynamicPrice(detail.dynamicprice); as prices) {
-              @if (prices.length > 0) {
+                <!-- Specifications Grid -->
                 <div class="detail-section">
-                  <h4>Pricing Rates (Wiro.ai)</h4>
-                  <div class="pricing-table">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Configuration</th>
-                          <th>Method</th>
-                          <th>Price ($)</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        @for (p of prices; track $index) {
-                          <tr>
-                            <td>{{ p.inputs ? (p.inputs | json) : 'Standard' }}</td>
-                            <td><code>{{ p.priceMethod }}</code></td>
-                            <td class="price-val">${{ p.price }}</td>
-                          </tr>
-                        }
-                      </tbody>
-                    </table>
+                  <h4>Model Specifications</h4>
+                  <div class="spec-grid">
+                    <div class="spec-item">
+                      <span class="spec-label">Model ID</span>
+                      <span class="spec-value">{{ res.detail?.id }}</span>
+                    </div>
+                    <div class="spec-item">
+                      <span class="spec-label">Provider</span>
+                      <span class="spec-value">{{ res.detail?.slugowner }}</span>
+                    </div>
+                    <div class="spec-item">
+                      <span class="spec-label">Computing Time</span>
+                      <span class="spec-value">{{ res.detail?.computingtime || 'Standard' }}</span>
+                    </div>
+                    <div class="spec-item">
+                      <span class="spec-label">Billing Model</span>
+                      <span class="spec-value highlight">{{ res.pricing.primaryMethodName }}</span>
+                    </div>
                   </div>
                 </div>
-              }
+
+                <!-- Description & Readme -->
+                <div class="detail-section">
+                  <h4>Description & Overview</h4>
+                  <p class="detail-desc-text">{{ res.detail?.description }}</p>
+                  @if (res.detail?.readme) {
+                    <div class="readme-box">
+                      <pre>{{ res.detail?.readme }}</pre>
+                    </div>
+                  }
+                </div>
+
+                <!-- Tags & Categories -->
+                @if (res.detail?.categories && res.detail?.categories.length > 0) {
+                  <div class="detail-section">
+                    <h4>Categories & Tags</h4>
+                    <div class="tags-row">
+                      @for (cat of res.detail?.categories; track cat) {
+                        <span class="tag-pill">{{ cat }}</span>
+                      }
+                    </div>
+                  </div>
+                }
+
+              </div>
             }
 
-            <!-- Description & Readme -->
-            <div class="detail-section">
-              <h4>Description & Capabilities</h4>
-              <p class="detail-desc-text">{{ detail.description }}</p>
-              @if (detail.readme) {
-                <div class="readme-box">
-                  <pre>{{ detail.readme }}</pre>
+            <!-- TAB 2: PRICING & BILLING EXPLANATION -->
+            @if (activeDetailTab() === 'pricing') {
+              <div class="tab-pane">
+                
+                <!-- Billing Method Explainer Banner -->
+                <div class="pricing-explainer-card">
+                  <div class="method-header">
+                    <span class="method-badge">{{ res.pricing.primaryMethodCode | uppercase }}</span>
+                    <div>
+                      <h5>{{ res.pricing.primaryMethodName }}</h5>
+                      <span class="method-tag">{{ res.pricing.headlineBadge }}</span>
+                    </div>
+                  </div>
+                  <p class="method-explanation">
+                    {{ res.pricing.primaryMethodExplanation }}
+                  </p>
                 </div>
-              }
-            </div>
 
-            <!-- Categories / Tags -->
-            @if (detail.categories && detail.categories.length > 0) {
-              <div class="detail-section">
-                <h4>Categories & Capabilities</h4>
-                <div class="tags-row">
-                  @for (cat of detail.categories; track cat) {
-                    <span class="tag-pill">{{ cat }}</span>
+                <!-- Token Pricing Callout (for LLMs) -->
+                @if (res.pricing.tokenPricingNote) {
+                  <div class="detail-section">
+                    <h4>Token Billing Rules (Model-Reported)</h4>
+                    <div class="token-note-box">
+                      <div class="note-icon">💬</div>
+                      <div class="note-body">
+                        <strong>Token Usage Breakdown:</strong>
+                        <p>{{ res.pricing.tokenPricingNote }}</p>
+                        <span class="token-sub">
+                          Tokens are tracked during the run and billed from your prepaid credit balance. Server errors are never billed.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                }
+
+                <!-- Dynamic Pricing Tiers Table -->
+                @if (res.pricing.tiers && res.pricing.tiers.length > 0) {
+                  <div class="detail-section">
+                    <h4>Dynamic Pricing Configuration Matrix</h4>
+                    <p class="section-subtext">
+                      Rates vary based on input configuration parameters (resolution, duration, output quantity).
+                    </p>
+                    <div class="pricing-table-wrap">
+                      <table class="pricing-table">
+                        <thead>
+                          <tr>
+                            <th>Parameter Combination</th>
+                            <th>Billing Method</th>
+                            <th>Rate ($ USD)</th>
+                            <th>Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          @for (tier of res.pricing.tiers; track $index) {
+                            <tr>
+                              <td class="col-inputs">
+                                <code>{{ tier.inputsDescription }}</code>
+                              </td>
+                              <td class="col-method">
+                                <span class="method-pill">{{ tier.priceMethodName }} ({{ tier.priceMethod }})</span>
+                              </td>
+                              <td class="col-price">
+                                <strong class="price-green">${{ tier.price }}</strong>
+                              </td>
+                              <td class="col-notes">
+                                @if (tier.note) {
+                                  <span class="tier-note">{{ tier.note }}</span>
+                                } @else {
+                                  <span class="muted-note">—</span>
+                                }
+                              </td>
+                            </tr>
+                          }
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                }
+
+                <!-- Fallback Per-Second Pricing Math (when no dynamicprice) -->
+                @if (res.pricing.isApproximate) {
+                  <div class="detail-section">
+                    <h4>Fallback Per-Second Billing Calculation</h4>
+                    <div class="fallback-math-card">
+                      <div class="math-formula">
+                        <code>Total Cost = Elapsed Seconds × CPS Rate</code>
+                      </div>
+                      <div class="math-breakdown">
+                        <div class="math-item">
+                          <span class="m-label">Queue / Model Rate (CPS)</span>
+                          <span class="m-val">${{ res.pricing.cpsRate || '0.00095' }} / sec</span>
+                        </div>
+                        <div class="math-item">
+                          <span class="m-label">Estimated Average Run Cost</span>
+                          <span class="m-val highlight">~${{ res.pricing.approximateCost }}</span>
+                        </div>
+                      </div>
+                      <p class="math-desc">
+                        This model does not define static parameter tiers. It is billed dynamically based on actual GPU runtime.
+                      </p>
+                    </div>
+                  </div>
+                }
+
+                <!-- Quick Button to Open Billing Reference -->
+                <div class="detail-section">
+                  <button class="btn-open-guide-link" (click)="showBillingGuide.set(true)">
+                    📖 View Complete Wiro Billing Methods Guide (10 Methods) ➔
+                  </button>
+                </div>
+
+              </div>
+            }
+
+            <!-- TAB 3: INPUT PARAMETERS SCHEMA -->
+            @if (activeDetailTab() === 'schema') {
+              <div class="tab-pane">
+                <div class="detail-section">
+                  <h4>Configurable Inputs & Parameters</h4>
+                  <p class="section-subtext">Parameters accepted by <code>/v1/Task/Create</code> for this model.</p>
+                  
+                  @if (res.detail?.parameters && res.detail?.parameters.length > 0) {
+                    <div class="parameters-list">
+                      @for (p of res.detail.parameters; track p.id || $index) {
+                        <div class="param-card">
+                          <div class="param-header">
+                            <span class="param-id">{{ p.id }}</span>
+                            <span class="param-type">{{ p.type || 'string' }}</span>
+                            @if (p.required) {
+                              <span class="param-required">Required</span>
+                            }
+                          </div>
+                          @if (p.label) {
+                            <strong class="param-label">{{ p.label }}</strong>
+                          }
+                          @if (p.note || p.placeholder) {
+                            <p class="param-note">{{ p.note || p.placeholder }}</p>
+                          }
+                          @if (p.defaultvalue) {
+                            <div class="param-default">
+                              Default: <code>{{ p.defaultvalue }}</code>
+                            </div>
+                          }
+                          @if (p.options && p.options.length > 0) {
+                            <div class="param-options">
+                              <span class="options-title">Allowed Options:</span>
+                              <div class="options-chips">
+                                @for (opt of p.options; track opt.value) {
+                                  <span class="opt-chip">{{ opt.text || opt.value }}</span>
+                                }
+                              </div>
+                            </div>
+                          }
+                        </div>
+                      }
+                    </div>
+                  } @else {
+                    <div class="empty-state mini">
+                      <p>Standard text prompt input with no custom parameter schema.</p>
+                    </div>
                   }
                 </div>
               </div>
             }
 
-            <!-- Parameters Schema (if present) -->
-            @if (detail.parameters) {
-              <div class="detail-section">
-                <h4>Input Parameter Schema</h4>
-                <div class="parameters-box">
-                  <pre>{{ detail.parameters | json }}</pre>
+            <!-- TAB 4: RAW JSON AUDIT -->
+            @if (activeDetailTab() === 'raw') {
+              <div class="tab-pane">
+                <div class="detail-section">
+                  <h4>Cached JSON Payload (Audit & Inspect)</h4>
+                  <div class="raw-json-box">
+                    <pre>{{ res.detail | json }}</pre>
+                  </div>
                 </div>
               </div>
             }
 
           }
+        </div>
+
+      </div>
+    </div>
+  }
+
+  <!-- Standalone Billing Guide Modal -->
+  @if (showBillingGuide()) {
+    <div class="guide-backdrop" (click)="showBillingGuide.set(false)">
+      <div class="guide-modal" (click)="$event.stopPropagation()">
+        
+        <header class="guide-header">
+          <div class="guide-title">
+            <span class="guide-icon">📖</span>
+            <div>
+              <h3>Wiro.ai Billing & Pricing Reference</h3>
+              <p>Understand how runs, seconds, outputs, tokens, and pixels are billed.</p>
+            </div>
+          </div>
+          <button class="btn-close" (click)="showBillingGuide.set(false)">✕</button>
+        </header>
+
+        <div class="guide-body">
+          <div class="guide-overview">
+            <p>
+              When you run an AI model through Wiro, you are billed based on the type of work performed. 
+              <strong>You pay only for successful runs — server errors are never billed.</strong>
+            </p>
+          </div>
+
+          <div class="guide-table-wrap">
+            <table class="guide-table">
+              <thead>
+                <tr>
+                  <th>Method</th>
+                  <th>Code</th>
+                  <th>Category</th>
+                  <th>How It Works</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (key of objectKeys(billingReference()); track key) {
+                  <tr>
+                    <td class="col-name"><strong>{{ billingReference()[key].name }}</strong></td>
+                    <td class="col-code"><code>{{ key }}</code></td>
+                    <td class="col-cat"><span class="cat-chip">{{ billingReference()[key].category }}</span></td>
+                    <td class="col-desc">{{ billingReference()[key].description }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+
+          <div class="guide-footer-note">
+            <strong>Dynamic vs. Fallback Pricing:</strong>
+            <p>
+              Models with <code>dynamicprice</code> define static rate tiers based on parameters (such as video duration or resolution). 
+              Models without dynamic pricing fallback to per-second billing (<code>totalcost = elapsed_seconds × cps</code>), 
+              where <code>approximatelycost</code> provides an estimated run cost based on historical execution averages.
+            </p>
+          </div>
         </div>
 
       </div>
