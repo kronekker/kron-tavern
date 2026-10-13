@@ -477,10 +477,10 @@ export class SessionsService {
       throw new NotFoundException(`Message '${targetMessageId}' not found.`);
     }
 
-    // Erase all messages strictly created after targetMsg
+    // Erase all messages strictly inserted after targetMsg
     const deleteResult = this.db
-      .prepare('DELETE FROM messages WHERE session_id = ? AND created_at > ?')
-      .run(sessionId, targetMsg.created_at);
+      .prepare('DELETE FROM messages WHERE session_id = ? AND rowid > (SELECT rowid FROM messages WHERE id = ?)')
+      .run(sessionId, targetMessageId);
 
     // If active compression was ahead of this rewind boundary, reconcile it
     if (session.active_compression_id) {
@@ -1053,25 +1053,33 @@ Only output the response text as ${persona.name}.
     const [slugowner, slugproject] = modelSlug.includes('/') ? modelSlug.split('/') : ['openai', modelSlug];
     const cleanOwner = encodeURIComponent(slugowner);
     const cleanProject = encodeURIComponent(slugproject);
+    const url = `https://api.wiro.ai/v1/Run/${cleanOwner}/${cleanProject}/sync`;
 
-    const res = await fetch(`https://api.wiro.ai/v1/Run/${cleanOwner}/${cleanProject}/sync`, {
+    const bodyPayload = {
+      prompt: prompt || undefined,
+      messages: messages && messages.length > 0 ? messages : undefined,
+    };
+
+    const maskedKey = apiKey.length > 8 ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : '***';
+    this.logger.log(`[Wiro Outbound Call] POST ${url} | x-api-key: ${maskedKey}`);
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
       },
-      body: JSON.stringify({
-        prompt: prompt || undefined,
-        messages: messages && messages.length > 0 ? messages : undefined,
-      }),
+      body: JSON.stringify(bodyPayload),
     });
 
     if (!res.ok) {
       const err = await res.text();
+      this.logger.error(`[Wiro API Error] POST ${url} -> Status ${res.status}: ${err}`);
       throw new Error(`Wiro error (${res.status}): ${err}`);
     }
 
     const data = await res.json();
+    this.logger.log(`[Wiro API Success] POST ${url} -> Received response`);
     return data.output || data.result?.output || data.text || JSON.stringify(data);
   }
 
@@ -1084,24 +1092,29 @@ Only output the response text as ${persona.name}.
     const [slugowner, slugproject] = modelSlug.includes('/') ? modelSlug.split('/') : ['openai', modelSlug];
     const cleanOwner = encodeURIComponent(slugowner);
     const cleanProject = encodeURIComponent(slugproject);
+    const url = `https://api.wiro.ai/v1/Run/${cleanOwner}/${cleanProject}/sync`;
 
-    const res = await fetch(`https://api.wiro.ai/v1/Run/${cleanOwner}/${cleanProject}/sync`, {
+    const bodyPayload = { messages };
+    const maskedKey = apiKey.length > 8 ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : '***';
+    this.logger.log(`[Wiro Outbound Stream] POST ${url} | x-api-key: ${maskedKey}`);
+
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-api-key': apiKey.trim(),
       },
-      body: JSON.stringify({
-        messages,
-      }),
+      body: JSON.stringify(bodyPayload),
     });
 
     if (!res.ok) {
       const err = await res.text();
+      this.logger.error(`[Wiro Stream Error] POST ${url} -> Status ${res.status}: ${err}`);
       throw new Error(`Wiro execution error (${res.status}): ${err}`);
     }
 
     const data = await res.json();
+    this.logger.log(`[Wiro Stream Success] POST ${url} -> Completed run`);
     const fullText = data.output || data.result?.output || data.text || (typeof data === 'string' ? data : JSON.stringify(data));
 
     // Stream out chunks for smooth front-end experience
