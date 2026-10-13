@@ -5,6 +5,10 @@ export interface AuthenticatedRequest extends Request {
   user: AuthTokenPayload;
 }
 
+export interface OptionalAuthenticatedRequest extends Request {
+  user?: AuthTokenPayload;
+}
+
 @Injectable()
 export class AuthGuard implements CanActivate {
   constructor(private readonly cryptoService: CryptoService) {}
@@ -25,6 +29,26 @@ export class AuthGuard implements CanActivate {
     }
 
     request.user = payload;
+    return true;
+  }
+}
+
+@Injectable()
+export class OptionalAuthGuard implements CanActivate {
+  constructor(private readonly cryptoService: CryptoService) {}
+
+  canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest();
+    const authHeader = request.headers['authorization'];
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.slice(7).trim();
+      const payload = this.cryptoService.verifyToken(token);
+      if (payload) {
+        request.user = payload;
+      }
+    }
+
     return true;
   }
 }

@@ -108,6 +108,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     this.ensureColumn('users', 'email', 'TEXT');
     this.ensureColumn('users', 'wiro_key_encrypted', 'TEXT');
     this.ensureColumn('keyword_memories', 'session_id', 'TEXT');
+    this.ensureColumn('keyword_memories', 'persona_id', 'TEXT REFERENCES personas(id) ON DELETE CASCADE');
     this.ensureColumn('keyword_memories', 'scope', "TEXT DEFAULT 'session'");
     this.ensureColumn('episodic_memories', 'scope', "TEXT DEFAULT 'session'");
 
@@ -400,6 +401,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       CREATE TABLE IF NOT EXISTS keyword_memories (
         id TEXT PRIMARY KEY,
         character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
+        persona_id TEXT REFERENCES personas(id) ON DELETE CASCADE,
         session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
         user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         title TEXT NOT NULL,

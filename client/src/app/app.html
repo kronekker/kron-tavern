@@ -10,6 +10,16 @@
     </div>
 
     <div class="nav-actions">
+      <button class="nav-btn primary" (click)="toggleCharacters()" title="Browse & Create AI Companions">
+        <span>🎭 Characters</span>
+      </button>
+
+      @if (authService.isAuthenticated()) {
+        <button class="nav-btn secondary" (click)="togglePersonas()" title="Manage Your Roleplay Personas">
+          <span>👤 Personas</span>
+        </button>
+      }
+
       <button class="nav-btn secondary" (click)="toggleModels()" title="Browse Multimodal AI Models">
         <span>🤖 Models</span>
       </button>
@@ -20,7 +30,7 @@
 
       <!-- Admin Button (Only shown if user is admin) -->
       @if (authService.isAdmin()) {
-        <button class="nav-btn primary" (click)="toggleAdmin()" title="Open Database & System Admin">
+        <button class="nav-btn secondary" (click)="toggleAdmin()" title="Open Database & System Admin">
           <span>⚙️ DB & Admin</span>
         </button>
       }
@@ -90,29 +100,49 @@
         </div>
 
         <div class="cta-actions">
+          <button class="btn-cta primary" (click)="toggleCharacters()">
+            🎭 Browse & Create Characters
+          </button>
+
+          @if (authService.isAuthenticated()) {
+            <button class="btn-cta secondary" (click)="togglePersonas()">
+              👤 My Roleplay Personas
+            </button>
+          }
+
           <button class="btn-cta secondary" (click)="toggleModels()">
-            🤖 Browse AI Models Catalog
+            🤖 AI Models Catalog
           </button>
 
           @if (authService.isAuthenticated()) {
             @if (authService.isAdmin()) {
-              <button class="btn-cta" (click)="toggleAdmin()">
-                ⚙️ Open Database & Admin Panel
+              <button class="btn-cta secondary" (click)="toggleAdmin()">
+                ⚙️ DB & Admin Panel
               </button>
             } @else {
-              <button class="btn-cta" (click)="toggleAuth()">
-                🔑 Manage API Keys & Settings
+              <button class="btn-cta secondary" (click)="toggleAuth()">
+                🔑 API Keys & Settings
               </button>
             }
           } @else {
-            <button class="btn-cta" (click)="toggleAuth()">
-              🔐 Sign In / Register (First user is Admin)
+            <button class="btn-cta secondary" (click)="toggleAuth()">
+              🔐 Sign In / Register
             </button>
           }
         </div>
       </div>
     </div>
   </main>
+
+  <!-- Characters Modal -->
+  @if (showCharacters()) {
+    <app-characters (close)="showCharacters.set(false)" (startChat)="onStartChat($event)" />
+  }
+
+  <!-- Personas Modal -->
+  @if (showPersonas()) {
+    <app-personas (close)="showPersonas.set(false)" />
+  }
 
   <!-- Admin Popup / Modal -->
   @if (showAdmin() && authService.isAdmin()) {

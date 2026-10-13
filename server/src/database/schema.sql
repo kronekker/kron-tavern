@@ -52,12 +52,13 @@ CREATE TABLE IF NOT EXISTS characters (
 CREATE TABLE IF NOT EXISTS keyword_memories (
   id TEXT PRIMARY KEY,
   character_id TEXT REFERENCES characters(id) ON DELETE CASCADE,
+  persona_id TEXT REFERENCES personas(id) ON DELETE CASCADE,
   session_id TEXT REFERENCES sessions(id) ON DELETE CASCADE,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   keywords TEXT NOT NULL, -- comma-separated trigger words
   content TEXT NOT NULL,
-  scope TEXT DEFAULT 'session', -- 'session', 'character', 'user'
+  scope TEXT DEFAULT 'session', -- 'session', 'character', 'persona', 'user'
   priority INTEGER DEFAULT 10,
   is_active INTEGER DEFAULT 1,
   created_at TEXT DEFAULT (datetime('now')),

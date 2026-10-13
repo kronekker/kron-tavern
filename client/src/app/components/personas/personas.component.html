@@ -1,0 +1,305 @@
+<div class="personas-backdrop" (click)="close.emit()">
+  <div class="personas-modal" (click)="$event.stopPropagation()">
+    
+    <!-- Modal Header -->
+    <header class="modal-header">
+      <div class="header-left">
+        <div class="header-icon">👤</div>
+        <div>
+          <h2>Your Roleplay Personas</h2>
+          <span class="sub-text">
+            Personas define who you are in roleplay conversations. They are strictly private to your account.
+          </span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button 
+          class="btn-tab-cta" 
+          [class.active]="activeTab() === 'editor' && !isEditing()"
+          (click)="openCreateForm()"
+          title="Create a new user persona">
+          <span>➕ Create Persona</span>
+        </button>
+        <button class="btn-close" (click)="close.emit()" title="Close">✕</button>
+      </div>
+    </header>
+
+    <!-- Notification Banner -->
+    @if (notification(); as notif) {
+      <div class="notif-banner" [class]="notif.type">
+        <span>{{ notif.message }}</span>
+        <button class="btn-dismiss" (click)="notification.set(null)">✕</button>
+      </div>
+    }
+
+    <!-- Content Body -->
+    <div class="modal-body">
+      
+      <!-- ================= LIST VIEW ================= -->
+      @if (activeTab() === 'list') {
+        
+        @if (loading()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading your personas...</p>
+          </div>
+        } @else if (personas().length === 0) {
+          <div class="empty-state">
+            <div class="empty-icon">👤</div>
+            <h3>No personas created yet</h3>
+            <p>
+              Create a roleplay persona to define your name, appearance, tone, and traits in conversations.
+            </p>
+            <button class="btn-empty-create" (click)="openCreateForm()">
+              ➕ Create Your First Persona
+            </button>
+          </div>
+        } @else {
+          <div class="personas-grid">
+            @for (p of personas(); track p.id) {
+              <div class="persona-card" [class.is-default]="p.is_default">
+                
+                <div class="card-header">
+                  <div class="avatar-wrap">
+                    @if (p.avatar_url) {
+                      <img [src]="p.avatar_url" [alt]="p.name" class="avatar-img" />
+                    } @else {
+                      <div class="avatar-fallback">👤</div>
+                    }
+                  </div>
+
+                  <div class="header-meta">
+                    <div class="name-row">
+                      <h3 class="persona-name">{{ p.name }}</h3>
+                      @if (p.is_default) {
+                        <span class="default-badge" title="Active default persona for new conversations">
+                          ⭐ Default
+                        </span>
+                      }
+                    </div>
+
+                    @if (p.speech_style) {
+                      <span class="style-pill">
+                        🗣️ {{ p.speech_style }}
+                      </span>
+                    }
+
+                    @if (p.snippet_count && p.snippet_count > 0) {
+                      <span class="trait-count-pill">
+                        🔑 {{ p.snippet_count }} Personal {{ p.snippet_count === 1 ? 'Trait' : 'Traits' }}
+                      </span>
+                    }
+                  </div>
+                </div>
+
+                <div class="card-body">
+                  <p class="desc-text">{{ p.description }}</p>
+                </div>
+
+                <div class="card-footer">
+                  <div class="footer-left">
+                    @if (!p.is_default) {
+                      <button class="btn-card-action default-btn" (click)="setDefault(p, $event)" title="Set as default persona">
+                        ⭐ Make Default
+                      </button>
+                    }
+                  </div>
+
+                  <div class="footer-right">
+                    <button class="btn-card-action edit" (click)="openEditForm(p)" title="Edit Persona">
+                      ✏️ Edit
+                    </button>
+                    <button class="btn-card-action delete" (click)="deletePersona(p, $event)" title="Delete Persona">
+                      🗑️ Delete
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            }
+          </div>
+        }
+
+      } @else {
+        
+        <!-- ================= EDITOR VIEW ================= -->
+        <div class="editor-container">
+          <div class="editor-header-nav">
+            <button class="btn-back" (click)="activeTab.set('list')">
+              ← Back to Personas
+            </button>
+            <h3>{{ isEditing() ? ('Edit Persona: ' + formName()) : 'Create Roleplay Persona' }}</h3>
+          </div>
+
+          <form class="editor-form" (submit)="$event.preventDefault(); savePersona()">
+            
+            <!-- Section 1: Basic Identity -->
+            <fieldset class="form-section">
+              <legend>1. Persona Identity</legend>
+
+              <div class="form-row">
+                <div class="form-group flex-2">
+                  <label>Persona Name <span class="req">*</span></label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="formName" 
+                    name="name" 
+                    placeholder="e.g. Aiden the Wayfarer" 
+                    maxlength="60" 
+                    required 
+                  />
+                  <span class="char-counter">{{ formName().length }} / 60</span>
+                </div>
+
+                <div class="form-group flex-3">
+                  <label>Speech Style / Mannerisms (Optional)</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="formSpeechStyle" 
+                    name="speech_style" 
+                    placeholder="e.g. Speaks in short sentences, avoids flowery words" 
+                    maxlength="150" 
+                  />
+                  <span class="char-counter">{{ formSpeechStyle().length }} / 150</span>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group flex-3">
+                  <label>Avatar Image URL</label>
+                  <input 
+                    type="url" 
+                    [(ngModel)]="formAvatarUrl" 
+                    name="avatar_url" 
+                    placeholder="https://... or leave empty" 
+                  />
+                </div>
+
+                <div class="form-group flex-1 avatar-preview-box">
+                  <label>Preview</label>
+                  <div class="avatar-preview-img">
+                    @if (formAvatarUrl()) {
+                      <img [src]="formAvatarUrl()" alt="Avatar Preview" />
+                    } @else {
+                      <span>👤</span>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>
+                  Persona Description & Appearance <span class="req">*</span>
+                  <span class="hint">(Who you are, your physical appearance, background, and perspective)</span>
+                </label>
+                <textarea 
+                  rows="4" 
+                  [(ngModel)]="formDescription" 
+                  name="description" 
+                  maxlength="1000" 
+                  placeholder="A weathered traveler in dust-streaked leather armor. Dark hair tied back, observant amber eyes, and a quiet demeanor..." 
+                  required>
+                </textarea>
+                <span class="char-counter">{{ formDescription().length }} / 1,000</span>
+              </div>
+
+              <div class="checkbox-row">
+                <label class="custom-checkbox">
+                  <input type="checkbox" [(ngModel)]="formIsDefault" name="is_default" />
+                  <span>Set as my default persona for new conversations</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <!-- Section 2: Modular Personal Traits & Inventory -->
+            <fieldset class="form-section">
+              <div class="section-title-row">
+                <legend>2. Modular Persona Traits & Facts</legend>
+                <button type="button" class="btn-add-snip" (click)="addSnippet()">
+                  ➕ Add Trait Snippet
+                </button>
+              </div>
+
+              <div class="lore-explanation-box">
+                <p>
+                  💡 <strong>Dynamic Persona Details:</strong> Store specific items, backstory secrets, or special skills as modular snippets. 
+                  When you mention a keyword in chat (like <em>sword</em>, <em>hometown</em>, or <em>magic</em>), the backend will dynamically inject 
+                  the fact into the turn's prompt context without bloating every single message.
+                </p>
+              </div>
+
+              @if (formSnippets().length === 0) {
+                <div class="empty-snippets-box">
+                  <p>No personal trait snippets added yet. Click <strong>➕ Add Trait Snippet</strong> to add weapons, secrets, or backstory facts.</p>
+                </div>
+              } @else {
+                <div class="snippets-list">
+                  @for (snip of formSnippets(); track $index) {
+                    <div class="snippet-card">
+                      <div class="snippet-card-top">
+                        <label class="snip-toggle">
+                          <input type="checkbox" [(ngModel)]="snip.is_active" [name]="'snip_active_' + $index" />
+                          <span>Active</span>
+                        </label>
+
+                        <div class="snip-inputs">
+                          <input 
+                            type="text" 
+                            class="snip-title-input" 
+                            [(ngModel)]="snip.title" 
+                            [name]="'snip_title_' + $index" 
+                            placeholder="Trait Name (e.g. Silver Falchion, Northern Exile)" 
+                            required 
+                          />
+                          <input 
+                            type="text" 
+                            class="snip-keys-input" 
+                            [(ngModel)]="snip.keywords" 
+                            [name]="'snip_keys_' + $index" 
+                            placeholder="Keywords (e.g. sword, weapon, blade)" 
+                            required 
+                          />
+                        </div>
+
+                        <button type="button" class="btn-remove-snip" (click)="removeSnippet($index)" title="Remove Trait">
+                          ✕
+                        </button>
+                      </div>
+
+                      <div class="snippet-card-bottom">
+                        <textarea 
+                          rows="2" 
+                          [(ngModel)]="snip.content" 
+                          [name]="'snip_content_' + $index" 
+                          maxlength="500" 
+                          placeholder="Fact or description to inject when triggered..." 
+                          required>
+                        </textarea>
+                        <span class="char-counter">{{ (snip.content || '').length }} / 500</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+            </fieldset>
+
+            <!-- Form Actions -->
+            <div class="form-actions-bar">
+              <button type="button" class="btn-cancel" (click)="activeTab.set('list')">
+                Cancel
+              </button>
+              <button type="submit" class="btn-save" [disabled]="saving()">
+                {{ saving() ? 'Saving Persona...' : (isEditing() ? '💾 Save Changes' : '✨ Create Persona') }}
+              </button>
+            </div>
+
+          </form>
+        </div>
+
+      }
+
+    </div>
+
+  </div>
+</div>

@@ -1,0 +1,462 @@
+<div class="characters-backdrop" (click)="close.emit()">
+  <div class="characters-modal" (click)="$event.stopPropagation()">
+    
+    <!-- Modal Header -->
+    <header class="modal-header">
+      <div class="header-left">
+        <div class="header-icon">🎭</div>
+        <div>
+          <h2>AI Companions & Characters</h2>
+          <span class="sub-text">
+            Create, manage, and discover AI roleplay companions with modular keyword lore.
+          </span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <button 
+          class="btn-tab-cta" 
+          [class.active]="activeTab() === 'editor' && !isEditing()"
+          (click)="setTab('editor')"
+          title="Create a new AI companion">
+          <span>➕ Create Character</span>
+        </button>
+        <button class="btn-close" (click)="close.emit()" title="Close">✕</button>
+      </div>
+    </header>
+
+    <!-- Notification Banner -->
+    @if (notification(); as notif) {
+      <div class="notif-banner" [class]="notif.type">
+        <span>{{ notif.message }}</span>
+        <button class="btn-dismiss" (click)="notification.set(null)">✕</button>
+      </div>
+    }
+
+    <!-- Tab Bar & Search Row (Visible when not editing) -->
+    @if (activeTab() !== 'editor') {
+      <div class="characters-toolbar">
+        <div class="tab-chips">
+          <button 
+            class="tab-chip" 
+            [class.active]="activeTab() === 'public'" 
+            (click)="setTab('public')">
+            <span>🌐 Community & Public</span>
+          </button>
+          
+          <button 
+            class="tab-chip" 
+            [class.active]="activeTab() === 'mine'" 
+            (click)="setTab('mine')">
+            <span>👤 My Characters</span>
+            @if (!authService.isAuthenticated()) {
+              <span class="auth-hint">(Requires Sign In)</span>
+            }
+          </button>
+        </div>
+
+        <div class="search-box">
+          <span class="search-icon">🔍</span>
+          <input 
+            type="text" 
+            [(ngModel)]="searchQuery" 
+            placeholder="Search characters by name, tagline, or personality..." 
+          />
+          @if (searchQuery()) {
+            <button class="btn-clear" (click)="searchQuery.set('')">✕</button>
+          }
+        </div>
+      </div>
+    }
+
+    <!-- Content Area: List View OR Editor View -->
+    <div class="modal-body">
+      
+      <!-- ================= LIST VIEW ================= -->
+      @if (activeTab() !== 'editor') {
+        
+        @if (loading()) {
+          <div class="loading-state">
+            <div class="spinner"></div>
+            <p>Loading characters...</p>
+          </div>
+        } @else if (filteredCharacters().length === 0) {
+          <div class="empty-state">
+            <div class="empty-icon">🎭</div>
+            <h3>No characters found</h3>
+            <p>
+              @if (activeTab() === 'mine') {
+                @if (!authService.isAuthenticated()) {
+                  Please sign in to view and create your private characters.
+                } @else {
+                  You haven't created any characters yet.
+                }
+              } @else {
+                No public community characters matched your search query.
+              }
+            </p>
+            @if (authService.isAuthenticated()) {
+              <button class="btn-empty-create" (click)="openCreateForm()">
+                ➕ Create Your First Character
+              </button>
+            }
+          </div>
+        } @else {
+          <div class="characters-grid">
+            @for (char of filteredCharacters(); track char.id) {
+              <div class="character-card">
+                
+                <!-- Card Top: Avatar, Name & Badges -->
+                <div class="card-header">
+                  <div class="avatar-wrap">
+                    @if (char.avatar_url) {
+                      <img [src]="char.avatar_url" [alt]="char.name" class="avatar-img" />
+                    } @else {
+                      <div class="avatar-fallback">🤖</div>
+                    }
+                  </div>
+
+                  <div class="header-meta">
+                    <h3 class="char-name">{{ char.name }}</h3>
+                    @if (char.tagline) {
+                      <p class="char-tagline">{{ char.tagline }}</p>
+                    }
+                    
+                    <div class="badge-row">
+                      <span class="badge scope" [class.public]="char.is_public" [class.private]="!char.is_public">
+                        {{ char.is_public ? '🌐 Public' : '🔒 Private' }}
+                      </span>
+                      <span class="badge creator">
+                        👤 {{ char.creator_id === authService.currentUser()?.id ? 'By You' : ('By ' + (char.creator_name || 'Anonymous')) }}
+                      </span>
+                      @if (char.snippet_count && char.snippet_count > 0) {
+                        <span class="badge snippets" title="Modular keyword lore snippets attached">
+                          🔑 {{ char.snippet_count }} Lore {{ char.snippet_count === 1 ? 'Snippet' : 'Snippets' }}
+                        </span>
+                      }
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Card Body: Description / Greeting Snippet -->
+                <div class="card-body">
+                  <div class="prompt-preview">
+                    <strong>Personality:</strong>
+                    <p>{{ char.system_prompt }}</p>
+                  </div>
+                  @if (char.greeting) {
+                    <div class="greeting-preview">
+                      <strong>Greeting:</strong>
+                      <p>“{{ char.greeting }}”</p>
+                    </div>
+                  }
+                </div>
+
+                <!-- Card Footer Actions -->
+                <div class="card-footer">
+                  <div class="footer-left">
+                    @if (canEdit(char)) {
+                      <button class="btn-card-action edit" (click)="openEditForm(char)" title="Edit Character">
+                        ✏️ Edit
+                      </button>
+                      <button class="btn-card-action delete" (click)="deleteCharacter(char, $event)" title="Delete Character">
+                        🗑️ Delete
+                      </button>
+                    }
+                  </div>
+
+                  <div class="footer-right">
+                    <button class="btn-card-action chat" (click)="startChat.emit(char)" title="Start Chat Session">
+                      💬 Chat
+                    </button>
+                  </div>
+                </div>
+
+              </div>
+            }
+          </div>
+        }
+
+      } @else {
+        
+        <!-- ================= EDITOR VIEW ================= -->
+        <div class="editor-container">
+          <div class="editor-header-nav">
+            <button class="btn-back" (click)="setTab('public')">
+              ← Back to Catalog
+            </button>
+            <h3>{{ isEditing() ? ('Edit Character: ' + formName()) : 'Create New AI Character' }}</h3>
+          </div>
+
+          <form class="editor-form" (submit)="$event.preventDefault(); saveCharacter()">
+            
+            <!-- Section 1: Basic Identity & Scopes -->
+            <fieldset class="form-section">
+              <legend>1. Identity & Scope</legend>
+
+              <div class="form-row">
+                <div class="form-group flex-2">
+                  <label>Character Name <span class="req">*</span></label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="formName" 
+                    name="name" 
+                    placeholder="e.g. Lyra the Alchemist" 
+                    maxlength="60" 
+                    required 
+                  />
+                  <span class="char-counter">{{ formName().length }} / 60</span>
+                </div>
+
+                <div class="form-group flex-3">
+                  <label>Tagline / Brief Summary</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="formTagline" 
+                    name="tagline" 
+                    placeholder="e.g. Master herbalist of the Silver Woods" 
+                    maxlength="120" 
+                  />
+                  <span class="char-counter">{{ formTagline().length }} / 120</span>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group flex-3">
+                  <label>Avatar Image URL</label>
+                  <input 
+                    type="url" 
+                    [(ngModel)]="formAvatarUrl" 
+                    name="avatar_url" 
+                    placeholder="https://... or generate in models catalog" 
+                  />
+                </div>
+
+                <div class="form-group flex-1 avatar-preview-box">
+                  <label>Preview</label>
+                  <div class="avatar-preview-img">
+                    @if (formAvatarUrl()) {
+                      <img [src]="formAvatarUrl()" alt="Avatar Preview" />
+                    } @else {
+                      <span>🤖</span>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <!-- Scope Toggle -->
+              <div class="scope-selector">
+                <label class="scope-label">Visibility Scope</label>
+                <div class="scope-options">
+                  <label class="scope-card" [class.selected]="!formIsPublic()">
+                    <input 
+                      type="radio" 
+                      [value]="false" 
+                      [checked]="!formIsPublic()" 
+                      (change)="formIsPublic.set(false)" 
+                      name="is_public" 
+                    />
+                    <div>
+                      <strong>🔒 Private (User-Scoped)</strong>
+                      <p>Only you can see and chat with this character.</p>
+                    </div>
+                  </label>
+
+                  <label class="scope-card" [class.selected]="formIsPublic()">
+                    <input 
+                      type="radio" 
+                      [value]="true" 
+                      [checked]="formIsPublic()" 
+                      (change)="formIsPublic.set(true)" 
+                      name="is_public" 
+                    />
+                    <div>
+                      <strong>🌐 Community / Public</strong>
+                      <p>Anyone in the tavern can discover and interact with this character.</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- Section 2: Core Personality & Dialogue -->
+            <fieldset class="form-section">
+              <legend>2. Personality & Prompt Foundations</legend>
+
+              <div class="form-group">
+                <label>
+                  System Prompt & Personality <span class="req">*</span>
+                  <span class="hint">(Core persona, behavior, traits, and speech rules)</span>
+                </label>
+                <textarea 
+                  rows="5" 
+                  [(ngModel)]="formSystemPrompt" 
+                  name="system_prompt" 
+                  maxlength="2000" 
+                  placeholder="You are Lyra, a sharp-witted herbalist who speaks with a dry sense of humor. You value botanical knowledge above royal politics..."
+                  required>
+                </textarea>
+                <span class="char-counter">{{ formSystemPrompt().length }} / 2,000</span>
+              </div>
+
+              <div class="form-group">
+                <label>
+                  Opening Greeting Message <span class="req">*</span>
+                  <span class="hint">(The very first message sent when starting a new chat)</span>
+                </label>
+                <textarea 
+                  rows="3" 
+                  [(ngModel)]="formGreeting" 
+                  name="greeting" 
+                  maxlength="1000" 
+                  placeholder="*Lyra glances up from her mortar and pestle, blowing a stray strand of auburn hair from her eyes.* 'Mind the drying wolfsbane by the door. What brings you to the grove?'"
+                  required>
+                </textarea>
+                <span class="char-counter">{{ formGreeting().length }} / 1,000</span>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label>Scenario / Initial Setting (Optional)</label>
+                  <textarea 
+                    rows="2" 
+                    [(ngModel)]="formScenario" 
+                    name="scenario" 
+                    maxlength="800" 
+                    placeholder="A misty morning in an apothecary tucked inside an ancient oak tree...">
+                  </textarea>
+                  <span class="char-counter">{{ formScenario().length }} / 800</span>
+                </div>
+
+                <div class="form-group flex-1">
+                  <label>Dialogue Examples (Optional)</label>
+                  <textarea 
+                    rows="2" 
+                    [(ngModel)]="formDialogueExamples" 
+                    name="dialogue_examples" 
+                    maxlength="1000" 
+                    placeholder="<START>\nUser: Do you have a cure for dragon burns?\nLyra: *chuckles dryly* For dragon burns, I have prayer. But for regular fire, this aloe salve will do.">
+                  </textarea>
+                  <span class="char-counter">{{ formDialogueExamples().length }} / 1,000</span>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <div class="form-group flex-1">
+                  <label>Default Model (Optional)</label>
+                  <input 
+                    type="text" 
+                    [(ngModel)]="formDefaultModel" 
+                    name="default_model" 
+                    placeholder="e.g. meta-llama/llama-3.3-70b-instruct or leave empty" 
+                  />
+                </div>
+
+                <div class="form-group flex-1">
+                  <label>Temperature: <strong>{{ formTemperature() }}</strong></label>
+                  <div class="slider-row">
+                    <input 
+                      type="range" 
+                      min="0.1" 
+                      max="1.5" 
+                      step="0.05" 
+                      [(ngModel)]="formTemperature" 
+                      name="temperature" 
+                    />
+                    <span class="slider-val">{{ formTemperature() }}</span>
+                  </div>
+                </div>
+              </div>
+            </fieldset>
+
+            <!-- Section 3: Modular Keyword Lorebook / Context Optimization -->
+            <fieldset class="form-section">
+              <div class="section-title-row">
+                <legend>3. Modular Keyword Lore & Triggers</legend>
+                <button type="button" class="btn-add-snip" (click)="addSnippet()">
+                  ➕ Add Lore Snippet
+                </button>
+              </div>
+
+              <div class="lore-explanation-box">
+                <p>
+                  💡 <strong>Smart Context Optimization:</strong> Instead of bloating the main system prompt with endless lore, 
+                  create small snippets triggered by keywords. When a user message mentions any trigger word (or when pinned manually), 
+                  the backend automatically injects only the matching snippet into that turn's prompt.
+                </p>
+              </div>
+
+              @if (formSnippets().length === 0) {
+                <div class="empty-snippets-box">
+                  <p>No keyword lore snippets added yet. Click <strong>➕ Add Lore Snippet</strong> to add character knowledge, items, or history.</p>
+                </div>
+              } @else {
+                <div class="snippets-list">
+                  @for (snip of formSnippets(); track $index) {
+                    <div class="snippet-card">
+                      <div class="snippet-card-top">
+                        <label class="snip-toggle">
+                          <input type="checkbox" [(ngModel)]="snip.is_active" [name]="'snip_active_' + $index" />
+                          <span>Active</span>
+                        </label>
+
+                        <div class="snip-inputs">
+                          <input 
+                            type="text" 
+                            class="snip-title-input" 
+                            [(ngModel)]="snip.title" 
+                            [name]="'snip_title_' + $index" 
+                            placeholder="Snippet Title (e.g. Silver Blade, Royal Court)" 
+                            required 
+                          />
+                          <input 
+                            type="text" 
+                            class="snip-keys-input" 
+                            [(ngModel)]="snip.keywords" 
+                            [name]="'snip_keys_' + $index" 
+                            placeholder="Trigger Keywords (comma-separated, e.g. sword, blade, steel)" 
+                            required 
+                          />
+                        </div>
+
+                        <button type="button" class="btn-remove-snip" (click)="removeSnippet($index)" title="Remove Snippet">
+                          ✕
+                        </button>
+                      </div>
+
+                      <div class="snippet-card-bottom">
+                        <textarea 
+                          rows="2" 
+                          [(ngModel)]="snip.content" 
+                          [name]="'snip_content_' + $index" 
+                          maxlength="500" 
+                          placeholder="Small concise factual description to inject into context when triggered..."
+                          required>
+                        </textarea>
+                        <span class="char-counter">{{ (snip.content || '').length }} / 500</span>
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+            </fieldset>
+
+            <!-- Form Actions -->
+            <div class="form-actions-bar">
+              <button type="button" class="btn-cancel" (click)="setTab('public')">
+                Cancel
+              </button>
+              <button type="submit" class="btn-save" [disabled]="saving()">
+                {{ saving() ? 'Saving Character...' : (isEditing() ? '💾 Save Changes' : '✨ Create Character') }}
+              </button>
+            </div>
+
+          </form>
+        </div>
+
+      }
+
+    </div>
+
+  </div>
+</div>
