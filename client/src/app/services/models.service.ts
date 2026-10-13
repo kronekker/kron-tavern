@@ -62,9 +62,23 @@ export interface ModelSummary {
   pricing: ModelPricingInfo;
 }
 
+export interface CategoryGroup {
+  id: string;
+  name: string;
+  description: string;
+  categories: string[];
+}
+
+export interface CategoryMetadataResponse {
+  selectedCategories: string[];
+  allKnownCategories: string[];
+  groups: CategoryGroup[];
+}
+
 export interface ModelCatalogStats {
   total: number;
   lastUpdated: string | null;
+  selectedCategories?: string[];
   breakdown: Record<string, number>;
 }
 
@@ -109,6 +123,14 @@ export class ModelsService {
     return this.http.get<ModelCatalogStats>('/api/models/stats');
   }
 
+  getCategories(): Observable<CategoryMetadataResponse> {
+    return this.http.get<CategoryMetadataResponse>('/api/models/categories');
+  }
+
+  updateCategories(categories: string[]): Observable<{ selectedCategories: string[] }> {
+    return this.http.put<{ selectedCategories: string[] }>('/api/models/categories', { categories });
+  }
+
   getCachedSlugs(): Observable<{ cachedSlugs: string[] }> {
     return this.http.get<{ cachedSlugs: string[] }>('/api/models/cached-slugs');
   }
@@ -131,7 +153,10 @@ export class ModelsService {
     return this.http.get<any>(`/api/models/${id}`);
   }
 
-  refreshCatalog(): Observable<RefreshCatalogResponse> {
-    return this.http.post<RefreshCatalogResponse>('/api/models/refresh', {});
+  refreshCatalog(categories?: string[]): Observable<RefreshCatalogResponse> {
+    return this.http.post<RefreshCatalogResponse>(
+      '/api/models/refresh',
+      categories && categories.length > 0 ? { categories } : {},
+    );
   }
 }

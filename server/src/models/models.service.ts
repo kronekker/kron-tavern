@@ -113,9 +113,61 @@ export interface ModelSummary {
   pricing: ModelPricingInfo;
 }
 
+export const DEFAULT_SELECTED_CATEGORIES: string[] = [
+  'partner-llm',
+  'llm',
+  'llm-reasoning',
+  'chat',
+  'text-to-image',
+  'image-to-image',
+  'image-editing',
+  'image-to-video',
+  'text-to-video',
+];
+
+export const ALL_KNOWN_WIRO_CATEGORIES: string[] = [
+  'partner-llm',
+  'llm',
+  'llm-reasoning',
+  'chat',
+  'text-to-image',
+  'image-to-image',
+  'image-editing',
+  'image-to-video',
+  'text-to-video',
+  '3d-generation',
+  'audio',
+  'speech-to-speech',
+  'speech-to-text',
+  'text-to-audio',
+  'text-to-music',
+  'text-to-song',
+  'text-to-speech',
+  'video-to-video',
+  'voice-agent',
+  'voice-clone',
+  'whisper',
+  'ocr',
+  'translate',
+  'use-agent',
+  'utils',
+  'deepseek',
+  'openai',
+  'qwen',
+  'xai',
+  'google',
+  'alibaba',
+  'ByteDance',
+  'elevenlabs',
+  'ideogram',
+  'klingai',
+  'PixVerse',
+];
+
 export interface ModelCatalogStats {
   total: number;
   lastUpdated: string | null;
+  selectedCategories: string[];
   breakdown: Record<ModelCategoryType, number>;
 }
 
@@ -138,6 +190,7 @@ export class ModelsService implements OnModuleInit {
   private cachedSummaries: ModelSummary[] = [];
   private cachedRawTools: Map<string, any> = new Map();
   private lastUpdated: string | null = null;
+  private selectedCategories: string[] = [...DEFAULT_SELECTED_CATEGORIES];
 
   constructor() {
     const isInsideServer = existsSync(resolve(process.cwd(), 'nest-cli.json'));
@@ -163,7 +216,13 @@ export class ModelsService implements OnModuleInit {
         const content = JSON.parse(readFileSync(this.catalogPath, 'utf-8'));
         this.cachedSummaries = content.models || [];
         this.lastUpdated = content.lastUpdated || null;
-        this.logger.log(`Loaded ${this.cachedSummaries.length} model summaries from ${this.catalogPath}`);
+        this.selectedCategories =
+          Array.isArray(content.selectedCategories) && content.selectedCategories.length > 0
+            ? content.selectedCategories
+            : [...DEFAULT_SELECTED_CATEGORIES];
+        this.logger.log(
+          `Loaded ${this.cachedSummaries.length} model summaries across ${this.selectedCategories.length} categories from ${this.catalogPath}`,
+        );
         return;
       }
 
@@ -343,7 +402,10 @@ export class ModelsService implements OnModuleInit {
     };
   }
 
-  private indexAndSaveCatalog(tools: any[]) {
+  private indexAndSaveCatalog(tools: any[], categoriesToSave?: string[]) {
+    if (categoriesToSave && categoriesToSave.length > 0) {
+      this.selectedCategories = categoriesToSave;
+    }
     this.cachedRawTools.clear();
     const summaries: ModelSummary[] = [];
 
@@ -374,7 +436,15 @@ export class ModelsService implements OnModuleInit {
 
     writeFileSync(
       this.catalogPath,
-      JSON.stringify({ lastUpdated: this.lastUpdated, models: this.cachedSummaries }, null, 2),
+      JSON.stringify(
+        {
+          lastUpdated: this.lastUpdated,
+          selectedCategories: this.selectedCategories,
+          models: this.cachedSummaries,
+        },
+        null,
+        2,
+      ),
       'utf-8',
     );
 
@@ -382,11 +452,11 @@ export class ModelsService implements OnModuleInit {
   }
 
   classifyCategory(cats: string[]): ModelCategoryType {
-    if (cats.includes('partner-llm') || cats.includes('llm') || cats.includes('llm-reasoning')) return 'chat';
+    if (cats.some((c) => ['partner-llm', 'llm', 'llm-reasoning', 'chat'].includes(c))) return 'chat';
     if (cats.includes('text-to-image')) return 'text-to-image';
-    if (cats.includes('image-to-image') || cats.includes('image-editing')) return 'image-to-image';
-    if (cats.includes('text-to-video') || cats.includes('image-to-video') || cats.includes('video-to-video')) return 'video';
-    if (cats.includes('text-to-speech') || cats.includes('speech-to-speech') || cats.includes('voice-agent')) return 'voice';
+    if (cats.some((c) => ['image-to-image', 'image-editing'].includes(c))) return 'image-to-image';
+    if (cats.some((c) => ['text-to-video', 'image-to-video', 'video-to-video'].includes(c))) return 'video';
+    if (cats.some((c) => ['text-to-speech', 'speech-to-speech', 'voice-agent', 'voice-clone'].includes(c))) return 'voice';
     return 'other';
   }
 
@@ -431,7 +501,65 @@ export class ModelsService implements OnModuleInit {
     return {
       total: this.cachedSummaries.length,
       lastUpdated: this.lastUpdated,
+      selectedCategories: this.selectedCategories,
       breakdown,
+    };
+  }
+
+  getSelectedCategories(): string[] {
+    return [...this.selectedCategories];
+  }
+
+  updateSelectedCategories(categories: string[]): { selectedCategories: string[] } {
+    if (!Array.isArray(categories) || categories.length === 0) {
+      throw new Error('Categories must be a non-empty array of strings.');
+    }
+    const unique = Array.from(new Set(categories.map((c) => c.trim()).filter(Boolean)));
+    this.selectedCategories = unique;
+
+    if (existsSync(this.catalogPath)) {
+      try {
+        const content = JSON.parse(readFileSync(this.catalogPath, 'utf-8'));
+        content.selectedCategories = this.selectedCategories;
+        writeFileSync(this.catalogPath, JSON.stringify(content, null, 2), 'utf-8');
+      } catch (err: any) {
+        this.logger.warn(`Could not persist updated selectedCategories to ${this.catalogPath}: ${err.message}`);
+      }
+    }
+
+    return { selectedCategories: this.selectedCategories };
+  }
+
+  getCategoryMetadata() {
+    return {
+      selectedCategories: this.selectedCategories,
+      allKnownCategories: ALL_KNOWN_WIRO_CATEGORIES,
+      groups: [
+        {
+          id: 'chat',
+          name: '💬 Chat & LLMs',
+          description: 'Companion dialogues, roleplay, multi-turn reasoning, and system prompting',
+          categories: ['partner-llm', 'llm', 'llm-reasoning', 'chat'],
+        },
+        {
+          id: 'text-to-image',
+          name: '🎨 Avatar Generation (Text-to-Image)',
+          description: 'Creating initial companion avatars and portraits from descriptive text',
+          categories: ['text-to-image'],
+        },
+        {
+          id: 'image-to-image',
+          name: '🖼️ Scenes & Expressions (Image-to-Image)',
+          description: 'Generating scene variations, poses, outfits, and emotional expressions from base portrait',
+          categories: ['image-to-image', 'image-editing'],
+        },
+        {
+          id: 'video',
+          name: '🎬 Video & Portrait Animation',
+          description: 'Animating companion avatars into motion video with prompt directions',
+          categories: ['image-to-video', 'text-to-video'],
+        },
+      ],
     };
   }
 
@@ -595,43 +723,91 @@ export class ModelsService implements OnModuleInit {
     return summary;
   }
 
-  async refreshCatalog(apiKey: string): Promise<{ success: boolean; stats: ModelCatalogStats; message: string }> {
-    this.logger.log('Fetching live model catalog from Wiro.ai (Tool/List)...');
+  async refreshCatalog(
+    apiKey: string,
+    categoriesToQuery?: string[],
+  ): Promise<{ success: boolean; stats: ModelCatalogStats; message: string }> {
+    const targetCategories =
+      Array.isArray(categoriesToQuery) && categoriesToQuery.length > 0
+        ? Array.from(new Set(categoriesToQuery.map((c) => c.trim()).filter(Boolean)))
+        : this.selectedCategories;
 
-    const response = await fetch('https://api.wiro.ai/v1/Tool/List', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
-      },
-      body: JSON.stringify({ limit: 1000, page: 1 }),
-    });
+    this.logger.log(
+      `Refreshing live model catalog from Wiro.ai for ${targetCategories.length} categories: [${targetCategories.join(', ')}]...`,
+    );
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(`Wiro.ai API returned error ${response.status}: ${errText}`);
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey.trim(),
+    };
+
+    // Query Wiro individually per category to prevent 1,000 item limit from truncating smaller categories
+    const responses = await Promise.all(
+      targetCategories.map(async (cat) => {
+        try {
+          const res = await fetch('https://api.wiro.ai/v1/Tool/List', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ categories: [cat], limit: 1000 }),
+          });
+          if (!res.ok) {
+            const errText = await res.text();
+            this.logger.warn(`Failed fetching category '${cat}': status ${res.status} - ${errText}`);
+            return [];
+          }
+          const json = await res.json();
+          const list = Array.isArray(json.tool) ? json.tool : [];
+          this.logger.log(`Category '${cat}' returned ${list.length} raw models.`);
+          return list;
+        } catch (err: any) {
+          this.logger.warn(`Error querying category '${cat}': ${err.message}`);
+          return [];
+        }
+      }),
+    );
+
+    const rawToolsMap = new Map<string, any>();
+    for (const toolList of responses) {
+      for (const tool of toolList) {
+        const id = String(tool.id);
+        if (!rawToolsMap.has(id)) {
+          rawToolsMap.set(id, tool);
+        }
+      }
     }
 
-    const data = await response.json();
-    const tools = data.tool || [];
-
-    if (!Array.isArray(tools) || tools.length === 0) {
-      throw new Error('No tools returned from Wiro.ai. Please check your API key.');
+    const uniqueTools = Array.from(rawToolsMap.values());
+    if (uniqueTools.length === 0) {
+      throw new Error('No tools returned from Wiro.ai for selected categories. Please check your API key.');
     }
 
     // Save full raw file
     const dir = dirname(this.rawPath);
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-    writeFileSync(this.rawPath, JSON.stringify(data, null, 2), 'utf-8');
+    writeFileSync(
+      this.rawPath,
+      JSON.stringify(
+        {
+          syncedAt: new Date().toISOString(),
+          categories: targetCategories,
+          count: uniqueTools.length,
+          tool: uniqueTools,
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
 
-    // Index into lightweight catalog
-    this.indexAndSaveCatalog(tools);
+    // Save selectedCategories and index catalog
+    this.selectedCategories = targetCategories;
+    this.indexAndSaveCatalog(uniqueTools, targetCategories);
 
     const stats = this.getStats();
     return {
       success: true,
       stats,
-      message: `Successfully synchronized ${stats.total} models from Wiro.ai.`,
+      message: `Successfully synchronized ${stats.total} unique models across ${targetCategories.length} selected categories.`,
     };
   }
 }

@@ -9,6 +9,8 @@ import {
   CachedModelDetailResponse,
   BillingMethodSpec,
   ModelPricingInfo,
+  CategoryMetadataResponse,
+  CategoryGroup,
 } from '../../services/models.service';
 import { AuthService } from '../../services/auth.service';
 
@@ -37,6 +39,22 @@ export class ModelCatalogComponent implements OnInit {
 
   // Billing Guide Modal / Drawer Tab
   showBillingGuide = signal<boolean>(false);
+
+  // Category Configuration Modal / Drawer
+  showCategorySettings = signal<boolean>(false);
+  categoryMetadata = signal<CategoryMetadataResponse | null>(null);
+  selectedCategories = signal<string[]>([
+    'partner-llm',
+    'llm',
+    'llm-reasoning',
+    'chat',
+    'text-to-image',
+    'image-to-image',
+    'image-editing',
+    'image-to-video',
+    'text-to-video',
+  ]);
+  savingCategories = signal<boolean>(false);
 
   // Notifications
   notification = signal<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
@@ -90,6 +108,96 @@ export class ModelCatalogComponent implements OnInit {
     this.loadCatalog();
     this.loadCachedSlugs();
     this.loadBillingReference();
+    this.loadCategoryMetadata();
+  }
+
+  loadCategoryMetadata() {
+    this.modelsService.getCategories().subscribe({
+      next: (res) => {
+        this.categoryMetadata.set(res);
+        if (res.selectedCategories && res.selectedCategories.length > 0) {
+          this.selectedCategories.set(res.selectedCategories);
+        }
+      },
+      error: (err) => {
+        console.error('Failed to load category metadata', err);
+      },
+    });
+  }
+
+  isCategorySelected(cat: string): boolean {
+    return this.selectedCategories().includes(cat);
+  }
+
+  toggleCategory(cat: string) {
+    const current = this.selectedCategories();
+    if (current.includes(cat)) {
+      this.selectedCategories.set(current.filter((c) => c !== cat));
+    } else {
+      this.selectedCategories.set([...current, cat]);
+    }
+  }
+
+  toggleCategoryGroup(group: CategoryGroup) {
+    const current = new Set(this.selectedCategories());
+    const allIn = group.categories.every((c) => current.has(c));
+    if (allIn) {
+      // Remove all in group
+      group.categories.forEach((c) => current.delete(c));
+    } else {
+      // Add all in group
+      group.categories.forEach((c) => current.add(c));
+    }
+    this.selectedCategories.set(Array.from(current));
+  }
+
+  resetDefaultCategories() {
+    this.selectedCategories.set([
+      'partner-llm',
+      'llm',
+      'llm-reasoning',
+      'chat',
+      'text-to-image',
+      'image-to-image',
+      'image-editing',
+      'image-to-video',
+      'text-to-video',
+    ]);
+  }
+
+  saveCategories(syncImmediately = false) {
+    const cats = this.selectedCategories();
+    if (cats.length === 0) {
+      this.notification.set({
+        type: 'error',
+        message: 'Please select at least one category to synchronize.',
+      });
+      return;
+    }
+
+    this.savingCategories.set(true);
+    this.modelsService.updateCategories(cats).subscribe({
+      next: (res) => {
+        this.savingCategories.set(false);
+        this.selectedCategories.set(res.selectedCategories);
+        if (syncImmediately) {
+          this.showCategorySettings.set(false);
+          this.refreshFromWiro();
+        } else {
+          this.notification.set({
+            type: 'success',
+            message: `Selected categories updated (${cats.length} active).`,
+          });
+        }
+      },
+      error: (err) => {
+        this.savingCategories.set(false);
+        this.notification.set({
+          type: 'error',
+          message: err.error?.message || `Failed to save categories: ${err.message}`,
+        });
+      },
+    });
   }
 
   loadCatalog() {
@@ -98,6 +206,9 @@ export class ModelCatalogComponent implements OnInit {
       next: (res) => {
         this.models.set(res.models);
         this.stats.set(res.stats);
+        if (res.stats.selectedCategories && res.stats.selectedCategories.length > 0) {
+          this.selectedCategories.set(res.stats.selectedCategories);
+        }
         this.loading.set(false);
       },
       error: (err) => {
@@ -165,12 +276,13 @@ export class ModelCatalogComponent implements OnInit {
     }
 
     this.refreshing.set(true);
+    const count = this.selectedCategories().length;
     this.notification.set({
       type: 'info',
-      message: 'Contacting api.wiro.ai to synchronize model catalog...',
+      message: `Contacting api.wiro.ai to synchronize models across ${count} selected categories...`,
     });
 
-    this.modelsService.refreshCatalog().subscribe({
+    this.modelsService.refreshCatalog(this.selectedCategories()).subscribe({
       next: (res) => {
         this.refreshing.set(false);
         this.notification.set({

@@ -8,7 +8,7 @@
         <div>
           <h2>Wiro.ai Multimodal Model Catalog</h2>
           <span class="sub-text">
-            Shared Catalog: Chat LLMs, Text-to-Image, Image-to-Image, Video & Voice Models
+            Shared Catalog: Chat LLMs, Avatar Portraits (T2I), Scene Variations (I2I) & Video Animation
           </span>
         </div>
       </div>
@@ -22,6 +22,13 @@
         </button>
 
         @if (authService.isAdmin()) {
+          <button 
+            class="btn-guide-toggle btn-config-categories" 
+            (click)="showCategorySettings.set(true)" 
+            title="Configure which Wiro model categories to sync and include">
+            <span>⚙️ Sync Categories ({{ selectedCategories().length }})</span>
+          </button>
+
           <button 
             class="btn-sync" 
             (click)="refreshFromWiro()" 
@@ -77,7 +84,7 @@
           class="filter-chip" 
           [class.active]="activeFilter() === 'chat'" 
           (click)="setFilter('chat')">
-          <span>💬 Chat (LLM)</span>
+          <span>💬 Chat & LLMs</span>
           <span class="chip-count">{{ stats()?.breakdown?.['chat'] || 0 }}</span>
         </button>
 
@@ -85,7 +92,7 @@
           class="filter-chip" 
           [class.active]="activeFilter() === 'text-to-image'" 
           (click)="setFilter('text-to-image')">
-          <span>🎨 Text-to-Image</span>
+          <span>🎨 Avatar Portraits (T2I)</span>
           <span class="chip-count">{{ stats()?.breakdown?.['text-to-image'] || 0 }}</span>
         </button>
 
@@ -93,7 +100,7 @@
           class="filter-chip" 
           [class.active]="activeFilter() === 'image-to-image'" 
           (click)="setFilter('image-to-image')">
-          <span>🖼️ Image-to-Image</span>
+          <span>🖼️ Scenes & Variations (I2I)</span>
           <span class="chip-count">{{ stats()?.breakdown?.['image-to-image'] || 0 }}</span>
         </button>
 
@@ -101,25 +108,19 @@
           class="filter-chip" 
           [class.active]="activeFilter() === 'video'" 
           (click)="setFilter('video')">
-          <span>🎬 Video</span>
+          <span>🎬 Video Animation</span>
           <span class="chip-count">{{ stats()?.breakdown?.['video'] || 0 }}</span>
         </button>
 
-        <button 
-          class="filter-chip" 
-          [class.active]="activeFilter() === 'voice'" 
-          (click)="setFilter('voice')">
-          <span>🎙️ Voice</span>
-          <span class="chip-count">{{ stats()?.breakdown?.['voice'] || 0 }}</span>
-        </button>
-
-        <button 
-          class="filter-chip" 
-          [class.active]="activeFilter() === 'other'" 
-          (click)="setFilter('other')">
-          <span>⚙️ Other</span>
-          <span class="chip-count">{{ stats()?.breakdown?.['other'] || 0 }}</span>
-        </button>
+        @if (stats()?.breakdown?.['other']) {
+          <button 
+            class="filter-chip" 
+            [class.active]="activeFilter() === 'other'" 
+            (click)="setFilter('other')">
+            <span>⚙️ Other</span>
+            <span class="chip-count">{{ stats()?.breakdown?.['other'] || 0 }}</span>
+          </button>
+        }
       </div>
 
       <!-- Search Input -->
@@ -676,6 +677,125 @@
             </p>
           </div>
         </div>
+
+      </div>
+    </div>
+  }
+
+  <!-- Admin Category Configuration Modal -->
+  @if (showCategorySettings()) {
+    <div class="guide-backdrop" (click)="showCategorySettings.set(false)">
+      <div class="category-modal" (click)="$event.stopPropagation()">
+        
+        <header class="guide-header">
+          <div class="guide-title">
+            <span class="guide-icon">⚙️</span>
+            <div>
+              <h3>Wiro.ai Category Synchronization Scope</h3>
+              <p>Configure which model categories are retrieved from Wiro.ai into KronTavern.</p>
+            </div>
+          </div>
+          <button class="btn-close" (click)="showCategorySettings.set(false)">✕</button>
+        </header>
+
+        <div class="guide-body">
+          <div class="category-notice">
+            <p>
+              💡 <strong>Why Category Filtering Matters:</strong> Wiro's <code>/Tool/List</code> API is limited to 1,000 models per query.
+              By synchronizing specific companion categories in focused parallel batches, we eliminate unrelated audio, music, and internal templates, 
+              ensuring 100% of LLMs, Avatar text-to-image, Scene image-to-image, and Video animation models are cataloged without being truncated.
+            </p>
+          </div>
+
+          <!-- Group selections -->
+          <div class="category-groups-grid">
+            @for (group of categoryMetadata()?.groups || []; track group.id) {
+              <div class="category-group-card">
+                <div class="group-card-header">
+                  <div class="group-info">
+                    <h4>{{ group.name }}</h4>
+                    <p class="group-desc">{{ group.description }}</p>
+                  </div>
+                  <button 
+                    type="button" 
+                    class="btn-group-toggle"
+                    (click)="toggleCategoryGroup(group)">
+                    Toggle Group
+                  </button>
+                </div>
+                
+                <div class="group-chips">
+                  @for (cat of group.categories; track cat) {
+                    <label class="cat-checkbox-chip" [class.selected]="isCategorySelected(cat)">
+                      <input 
+                        type="checkbox" 
+                        [checked]="isCategorySelected(cat)" 
+                        (change)="toggleCategory(cat)" 
+                      />
+                      <code>{{ cat }}</code>
+                    </label>
+                  }
+                </div>
+              </div>
+            }
+          </div>
+
+          <!-- Additional / Excluded Wiro Marketplace categories -->
+          @if (categoryMetadata()?.allKnownCategories; as allCats) {
+            <details class="advanced-cats-accordion">
+              <summary>
+                <span>➕ Other Wiro Marketplace Categories (Audio, Speech, 3D, Utility, etc.)</span>
+              </summary>
+              <div class="advanced-cats-body">
+                <p class="note">These categories are excluded by default to keep the tavern focused on roleplay, avatars, and animations.</p>
+                <div class="group-chips">
+                  @for (cat of allCats; track cat) {
+                    @if (!['partner-llm', 'llm', 'llm-reasoning', 'chat', 'text-to-image', 'image-to-image', 'image-editing', 'image-to-video', 'text-to-video'].includes(cat)) {
+                      <label class="cat-checkbox-chip" [class.selected]="isCategorySelected(cat)">
+                        <input 
+                          type="checkbox" 
+                          [checked]="isCategorySelected(cat)" 
+                          (change)="toggleCategory(cat)" 
+                        />
+                        <code>{{ cat }}</code>
+                      </label>
+                    }
+                  }
+                </div>
+              </div>
+            </details>
+          }
+        </div>
+
+        <footer class="category-modal-footer">
+          <div class="footer-left">
+            <span class="active-count-tag">
+              Selected: <strong>{{ selectedCategories().length }}</strong> categories
+            </span>
+            <button type="button" class="btn-text-action" (click)="resetDefaultCategories()">
+              ↺ Reset to Defaults
+            </button>
+          </div>
+          <div class="footer-actions">
+            <button type="button" class="btn-secondary" (click)="showCategorySettings.set(false)">
+              Cancel
+            </button>
+            <button 
+              type="button" 
+              class="btn-primary" 
+              [disabled]="savingCategories()"
+              (click)="saveCategories(false)">
+              {{ savingCategories() ? 'Saving...' : '💾 Save Categories' }}
+            </button>
+            <button 
+              type="button" 
+              class="btn-sync-action" 
+              [disabled]="savingCategories() || refreshing()"
+              (click)="saveCategories(true)">
+              {{ refreshing() ? '🔄 Syncing...' : '💾 Save & Sync Now' }}
+            </button>
+          </div>
+        </footer>
 
       </div>
     </div>

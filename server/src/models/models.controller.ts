@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Put,
+  Body,
   Param,
   Query,
   UseGuards,
@@ -36,6 +38,23 @@ export class ModelsController {
   @ApiOperation({ summary: 'Get total models count and category breakdown' })
   getStats() {
     return this.modelsService.getStats();
+  }
+
+  @Get('categories')
+  @ApiOperation({ summary: 'Get selected and all available categories for model synchronization' })
+  getCategories() {
+    return this.modelsService.getCategoryMetadata();
+  }
+
+  @Put('categories')
+  @UseGuards(AdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Admin only: Update selected categories to include in synchronization' })
+  updateCategories(@Body() body: { categories: string[] }) {
+    if (!body || !Array.isArray(body.categories) || body.categories.length === 0) {
+      throw new BadRequestException('A non-empty "categories" array of strings is required.');
+    }
+    return this.modelsService.updateSelectedCategories(body.categories);
   }
 
   @Get('billing-reference')
@@ -93,7 +112,10 @@ export class ModelsController {
   @UseGuards(AdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Admin only: Synchronize and refresh available models from Wiro.ai using Admin API key' })
-  async refreshCatalog(@Req() req: AuthenticatedRequest) {
+  async refreshCatalog(
+    @Req() req: AuthenticatedRequest,
+    @Body() body?: { categories?: string[] },
+  ) {
     const adminApiKey = this.authService.getDecryptedWiroKey(req.user.userId);
     if (!adminApiKey) {
       throw new HttpException(
@@ -103,7 +125,7 @@ export class ModelsController {
     }
 
     try {
-      return await this.modelsService.refreshCatalog(adminApiKey);
+      return await this.modelsService.refreshCatalog(adminApiKey, body?.categories);
     } catch (err: any) {
       throw new HttpException(`Failed to refresh Wiro.ai models: ${err.message}`, HttpStatus.BAD_GATEWAY);
     }
