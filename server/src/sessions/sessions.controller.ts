@@ -74,8 +74,9 @@ export class SessionsController {
     @Res() res: Response,
   ) {
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
     try {
@@ -85,13 +86,16 @@ export class SessionsController {
         body.content || '',
         (token: string) => {
           res.write(`data: ${JSON.stringify({ type: 'token', token })}\n\n`);
+          (res as any).flush?.();
         },
       );
 
       res.write(`data: ${JSON.stringify({ type: 'complete', message: result.message, trace: result.trace })}\n\n`);
+      (res as any).flush?.();
       res.end();
     } catch (err: any) {
       res.write(`data: ${JSON.stringify({ type: 'error', error: err.message || 'Turn execution failed' })}\n\n`);
+      (res as any).flush?.();
       res.end();
     }
   }
@@ -105,8 +109,9 @@ export class SessionsController {
     @Res() res: Response,
   ) {
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
     res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders?.();
 
     try {
@@ -116,13 +121,16 @@ export class SessionsController {
         body.suggestion,
         (token: string) => {
           res.write(`data: ${JSON.stringify({ type: 'token', token })}\n\n`);
+          (res as any).flush?.();
         },
       );
 
       res.write(`data: ${JSON.stringify({ type: 'complete', message: result.message, trace: result.trace })}\n\n`);
+      (res as any).flush?.();
       res.end();
     } catch (err: any) {
       res.write(`data: ${JSON.stringify({ type: 'error', error: err.message || 'Reroll failed' })}\n\n`);
+      (res as any).flush?.();
       res.end();
     }
   }

@@ -7,6 +7,7 @@ import { CharactersComponent } from './components/characters/characters.componen
 import { PersonasComponent } from './components/personas/personas.component';
 import { ChatStageComponent } from './components/chat-stage/chat-stage.component';
 import { SessionSetupModalComponent } from './components/session-setup-modal/session-setup-modal.component';
+import { SessionsModalComponent } from './components/sessions-modal/sessions-modal.component';
 import { AuthService } from './services/auth.service';
 import type { CharacterItem } from './services/characters.service';
 
@@ -22,6 +23,7 @@ import type { CharacterItem } from './services/characters.service';
     PersonasComponent,
     ChatStageComponent,
     SessionSetupModalComponent,
+    SessionsModalComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
@@ -36,11 +38,29 @@ export class App {
   showModels = signal<boolean>(false);
   showCharacters = signal<boolean>(false);
   showPersonas = signal<boolean>(false);
+  showSessions = signal<boolean>(false);
 
   // Active Chat Session State
   activeSessionId = signal<string | null>(null);
   showSessionSetup = signal<boolean>(false);
   setupCharacter = signal<CharacterItem | null>(null);
+
+  // Collapsible Top Navbar State
+  isNavbarCollapsed = signal<boolean>(false);
+
+  toggleNavbar() {
+    this.isNavbarCollapsed.update((v) => !v);
+  }
+
+  setNavbarCollapsed(collapsed: boolean) {
+    this.isNavbarCollapsed.set(collapsed);
+  }
+
+  private checkAutoCollapseForMobile() {
+    if (typeof window !== 'undefined' && window.innerWidth <= 820) {
+      this.isNavbarCollapsed.set(true);
+    }
+  }
 
   toggleAdmin() {
     this.showAdmin.update((v) => !v);
@@ -62,6 +82,14 @@ export class App {
     this.showPersonas.update((v) => !v);
   }
 
+  toggleSessions() {
+    if (!this.authService.isAuthenticated()) {
+      this.showAuth.set(true);
+      return;
+    }
+    this.showSessions.update((v) => !v);
+  }
+
   onStartChat(character: CharacterItem) {
     this.showCharacters.set(false);
     if (!this.authService.isAuthenticated()) {
@@ -75,15 +103,25 @@ export class App {
   onOpenSession(sessionId: string) {
     this.showSessionSetup.set(false);
     this.showCharacters.set(false);
+    this.showSessions.set(false);
     this.activeSessionId.set(sessionId);
+    this.checkAutoCollapseForMobile();
+  }
+
+  onSessionDeleted(deletedId: string) {
+    if (this.activeSessionId() === deletedId) {
+      this.activeSessionId.set(null);
+    }
   }
 
   onCloseStage() {
     this.activeSessionId.set(null);
+    this.isNavbarCollapsed.set(false);
   }
 
   onSwitchSession(sessionId: string) {
     this.activeSessionId.set(sessionId);
+    this.checkAutoCollapseForMobile();
   }
 
   onRequestNewSession() {

@@ -1,0 +1,172 @@
+<div class="sessions-backdrop" (click)="close.emit()">
+  <div class="sessions-modal" (click)="$event.stopPropagation()">
+    <!-- Header -->
+    <div class="modal-header">
+      <div class="header-left">
+        <span class="header-icon">📜</span>
+        <div>
+          <h2>Roleplay Sessions</h2>
+          <span class="sub-text">Browse, resume, or manage your active companion conversations</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn-tab-cta" (click)="onStartNew()">
+          <span>⚔️ Start New Session</span>
+        </button>
+        <button class="btn-close" (click)="close.emit()" title="Close">✕</button>
+      </div>
+    </div>
+
+    <!-- Search & Filter Bar -->
+    <div class="filter-bar">
+      <div class="search-input-wrapper">
+        <span class="search-icon">🔍</span>
+        <input
+          type="text"
+          [(ngModel)]="searchQuery"
+          placeholder="Filter sessions by companion, persona, title, or message snippet..."
+          class="search-input"
+        />
+        @if (searchQuery()) {
+          <button class="btn-clear-search" (click)="searchQuery.set('')">✕</button>
+        }
+      </div>
+
+      <div class="filter-meta">
+        <span class="count-badge">
+          {{ filteredSessions().length }} of {{ sessions().length }} {{ sessions().length === 1 ? 'Session' : 'Sessions' }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Error Banner -->
+    @if (error()) {
+      <div class="error-banner">
+        <span>⚠️ {{ error() }}</span>
+        <button class="btn-retry" (click)="loadSessions()">Retry</button>
+      </div>
+    }
+
+    <!-- Content / Cards List -->
+    <div class="modal-body">
+      @if (loading()) {
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>Retrieving your conversations from the archives...</p>
+        </div>
+      } @else if (filteredSessions().length === 0) {
+        <div class="empty-state">
+          @if (searchQuery()) {
+            <span class="empty-icon">🔎</span>
+            <h3>No matching sessions found</h3>
+            <p>No conversations matched your filter "{{ searchQuery() }}".</p>
+            <button class="btn-secondary" (click)="searchQuery.set('')">Clear Search Filter</button>
+          } @else {
+            <span class="empty-icon">🏰</span>
+            <h3>No conversations yet</h3>
+            <p>The tavern is quiet. Choose an AI companion and begin your first roleplay scene.</p>
+            <button class="btn-primary" (click)="onStartNew()">
+              ⚔️ Start Your First Chat
+            </button>
+          }
+        </div>
+      } @else {
+        <div class="sessions-grid">
+          @for (s of filteredSessions(); track s.id) {
+            <div
+              class="session-card"
+              [class.is-active]="s.id === currentSessionId()"
+              (click)="onSelectSession(s)"
+            >
+              <!-- Card Top / Companions Row -->
+              <div class="card-header">
+                <div class="avatar-pair">
+                  <!-- Character Avatar -->
+                  <div class="character-avatar-wrapper">
+                    @if (s.character_avatar) {
+                      <img [src]="s.character_avatar" [alt]="s.character_name" class="avatar-img" />
+                    } @else {
+                      <div class="avatar-initial">{{ s.character_name?.charAt(0) || 'C' }}</div>
+                    }
+                  </div>
+                </div>
+
+                <div class="card-identity">
+                  <div class="name-status-row">
+                    <h3 class="character-name">{{ s.character_name || 'Companion' }}</h3>
+                    @if (s.id === currentSessionId()) {
+                      <span class="active-badge" title="Currently open in the chat stage">
+                        ● Current Scene
+                      </span>
+                    }
+                  </div>
+                  
+                  @if (s.persona_name) {
+                    <span class="persona-tag">
+                      👤 Playing as <strong>{{ s.persona_name }}</strong>
+                    </span>
+                  }
+                </div>
+
+                <div class="card-timestamp">
+                  <span>{{ s.updated_at | date: 'mediumDate' }}</span>
+                </div>
+              </div>
+
+              <!-- Card Body / Last Message Snippet -->
+              <div class="card-body">
+                <h4 class="session-title">{{ s.title }}</h4>
+                <div class="snippet-preview">
+                  @if (s.last_message) {
+                    <p class="snippet-text">
+                      <span class="quote-mark">“</span>{{ s.last_message | slice: 0: 160 }}{{ s.last_message.length > 160 ? '...' : '' }}<span class="quote-mark">”</span>
+                    </p>
+                  } @else {
+                    <p class="snippet-empty">Scene initialized. Ready for response.</p>
+                  }
+                </div>
+              </div>
+
+              <!-- Card Footer / Metadata & Actions -->
+              <div class="card-footer">
+                <div class="meta-pills">
+                  <span class="meta-pill turns-pill" title="Canonical turns in conversation">
+                    💬 {{ s.message_count }} {{ s.message_count === 1 ? 'turn' : 'turns' }}
+                  </span>
+                  @if (s.chat_model) {
+                    <span class="meta-pill model-pill" [title]="'Chat Model: ' + s.chat_model">
+                      🤖 {{ s.chat_model }}
+                    </span>
+                  }
+                </div>
+
+                <div class="card-actions">
+                  <button
+                    class="btn-delete"
+                    (click)="onDeleteSession(s, $event)"
+                    [disabled]="deletingId() === s.id"
+                    title="Delete this session permanently"
+                  >
+                    @if (deletingId() === s.id) {
+                      <span>Deleting...</span>
+                    } @else {
+                      <span>🗑️ Delete</span>
+                    }
+                  </button>
+
+                  <button
+                    class="btn-load"
+                    (click)="onSelectSession(s)"
+                    title="Resume conversation"
+                  >
+                    <span>Resume Scene →</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          }
+        </div>
+      }
+    </div>
+  </div>
+</div>

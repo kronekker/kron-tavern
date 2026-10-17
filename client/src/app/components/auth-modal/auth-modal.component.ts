@@ -7,11 +7,12 @@ import {
   ModelSummary,
   ResolvedActiveModels,
 } from '../../services/models.service';
+import { ModelPickerTableComponent } from '../model-picker-table/model-picker-table.component';
 
 @Component({
   selector: 'app-auth-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModelPickerTableComponent],
   templateUrl: './auth-modal.component.html',
   styleUrls: ['./auth-modal.component.scss'],
 })
@@ -189,9 +190,10 @@ export class AuthModalComponent implements OnInit {
   }
 
   saveApiKey() {
-    if (!this.apiKeyInput.trim()) return;
+    const cleanKey = this.apiKeyInput.trim();
+    if (!cleanKey) return;
     this.loading.set(true);
-    this.authService.saveWiroKey(this.apiKeyInput).subscribe({
+    this.authService.saveWiroKey(cleanKey).subscribe({
       next: () => {
         this.loading.set(false);
         this.successMessage.set('Wiro.ai API key encrypted and saved.');

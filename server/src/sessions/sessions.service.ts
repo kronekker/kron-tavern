@@ -779,21 +779,37 @@ Keep the reply authentic, engaging, and between 1 to 3 sentences.
 Only output the response text as ${persona.name}.
     `.trim();
 
-    // Try calling Wiro / LLM with user's key if available
-    const apiKey = this.authService.getDecryptedWiroKey(userId);
-    if (apiKey) {
+    // Try calling Local llama.cpp first if session chat_model is a local model
+    if (this.modelsService.isLocalLlmModel(details.session.chat_model)) {
       try {
-        const response = await this.callWiroChatCompletion(
+        const response = await this.callLocalLlamaChatCompletion(
           details.session.chat_model,
           reversedPrompt,
-          [],
-          apiKey,
+          [{ role: 'user', content: reversedPrompt }],
         );
         if (response && response.trim()) {
           return { suggestedText: response.trim() };
         }
       } catch (err: any) {
-        this.logger.warn(`Wiro suggestion call failed: ${err.message}. Using intelligent fallback.`);
+        this.logger.warn(`Local llama.cpp suggestion call failed: ${err.message}. Using intelligent fallback.`);
+      }
+    } else {
+      // Try calling Wiro / LLM with user's key if available
+      const apiKey = this.authService.getDecryptedWiroKey(userId);
+      if (apiKey) {
+        try {
+          const response = await this.callWiroChatCompletion(
+            details.session.chat_model,
+            reversedPrompt,
+            [],
+            apiKey,
+          );
+          if (response && response.trim()) {
+            return { suggestedText: response.trim() };
+          }
+        } catch (err: any) {
+          this.logger.warn(`Wiro suggestion call failed: ${err.message}. Using intelligent fallback.`);
+        }
       }
     }
 
@@ -880,23 +896,37 @@ Only output the response text as ${persona.name}.
     ];
 
     // 5. Stream LLM Generation
-    const apiKey = this.authService.getDecryptedWiroKey(userId);
     let fullResponseText = '';
 
-    if (apiKey) {
+    if (this.modelsService.isLocalLlmModel(session.chat_model)) {
       try {
-        fullResponseText = await this.streamWiroChatCompletion(
+        fullResponseText = await this.streamLocalLlamaChatCompletion(
           session.chat_model,
           chatMessagesPayload,
-          apiKey,
           onToken,
+          character.temperature ?? 0.8,
         );
       } catch (err: any) {
-        this.logger.warn(`Live Wiro stream failed (${err.message}); falling back to local companion generation.`);
+        this.logger.warn(`Local llama.cpp stream failed (${err.message}); falling back to local companion generation.`);
         fullResponseText = await this.simulateStreamCompanionResponse(character, persona, userContent, onToken);
       }
     } else {
-      fullResponseText = await this.simulateStreamCompanionResponse(character, persona, userContent, onToken);
+      const apiKey = this.authService.getDecryptedWiroKey(userId);
+      if (apiKey) {
+        try {
+          fullResponseText = await this.streamWiroChatCompletion(
+            session.chat_model,
+            chatMessagesPayload,
+            apiKey,
+            onToken,
+          );
+        } catch (err: any) {
+          this.logger.warn(`Live Wiro stream failed (${err.message}); falling back to local companion generation.`);
+          fullResponseText = await this.simulateStreamCompanionResponse(character, persona, userContent, onToken);
+        }
+      } else {
+        fullResponseText = await this.simulateStreamCompanionResponse(character, persona, userContent, onToken);
+      }
     }
 
     const latencyMs = Date.now() - startTime;
@@ -1044,6 +1074,54 @@ Only output the response text as ${persona.name}.
 
   // --- External Wiro API and Simulation Helpers ---
 
+  private extractWiroOutputText(data: any): string {
+    if (!data) return '';
+    if (typeof data === 'string') return data;
+
+    // Standard Wiro tasklist array structure
+    if (Array.isArray(data.tasklist) && data.tasklist.length > 0) {
+      const task = data.tasklist[0];
+
+      // Check outputs array
+      if (Array.isArray(task.outputs) && task.outputs.length > 0) {
+        const out = task.outputs[0];
+        const content = out?.content;
+        if (typeof content === 'string' && content.trim()) {
+          return content.trim();
+        }
+        if (content && typeof content === 'object') {
+          if (typeof content.raw === 'string' && content.raw.trim()) {
+            return content.raw.trim();
+          }
+          if (Array.isArray(content.answer) && content.answer.length > 0) {
+            const joinedAnswer = content.answer.filter((a: any) => typeof a === 'string').join('\n');
+            if (joinedAnswer.trim()) return joinedAnswer.trim();
+          }
+          if (Array.isArray(content.segments) && content.segments.length > 0) {
+            const joinedSegments = content.segments
+              .map((s: any) => (typeof s === 'string' ? s : s?.text || ''))
+              .join('');
+            if (joinedSegments.trim()) return joinedSegments.trim();
+          }
+        }
+      }
+
+      // Check debugoutput fallback
+      if (typeof task.debugoutput === 'string' && task.debugoutput.trim()) {
+        return task.debugoutput.trim();
+      }
+    }
+
+    // Direct properties fallback
+    if (typeof data.output === 'string' && data.output.trim()) return data.output.trim();
+    if (typeof data.text === 'string' && data.text.trim()) return data.text.trim();
+    if (data.result && typeof data.result === 'object' && typeof data.result.output === 'string') {
+      return data.result.output.trim();
+    }
+
+    return '';
+  }
+
   private async callWiroChatCompletion(
     modelSlug: string,
     prompt: string,
@@ -1055,19 +1133,22 @@ Only output the response text as ${persona.name}.
     const cleanProject = encodeURIComponent(slugproject);
     const url = `https://api.wiro.ai/v1/Run/${cleanOwner}/${cleanProject}/sync`;
 
-    const bodyPayload = {
-      prompt: prompt || undefined,
-      messages: messages && messages.length > 0 ? messages : undefined,
-    };
+    const bodyPayload: any = {};
+    if (messages && messages.length > 0) {
+      bodyPayload.messages = messages;
+    } else if (prompt) {
+      bodyPayload.prompt = prompt;
+    }
 
-    const maskedKey = apiKey.length > 8 ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : '***';
+    const cleanKey = apiKey.trim();
+    const maskedKey = cleanKey.length > 8 ? `${cleanKey.slice(0, 4)}...${cleanKey.slice(-4)}` : '***';
     this.logger.log(`[Wiro Outbound Call] POST ${url} | x-api-key: ${maskedKey}`);
 
     const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
+        'x-api-key': cleanKey,
       },
       body: JSON.stringify(bodyPayload),
     });
@@ -1080,7 +1161,8 @@ Only output the response text as ${persona.name}.
 
     const data = await res.json();
     this.logger.log(`[Wiro API Success] POST ${url} -> Received response`);
-    return data.output || data.result?.output || data.text || JSON.stringify(data);
+    const extracted = this.extractWiroOutputText(data);
+    return extracted || JSON.stringify(data);
   }
 
   private async streamWiroChatCompletion(
@@ -1092,42 +1174,309 @@ Only output the response text as ${persona.name}.
     const [slugowner, slugproject] = modelSlug.includes('/') ? modelSlug.split('/') : ['openai', modelSlug];
     const cleanOwner = encodeURIComponent(slugowner);
     const cleanProject = encodeURIComponent(slugproject);
-    const url = `https://api.wiro.ai/v1/Run/${cleanOwner}/${cleanProject}/sync`;
+    const runUrl = `https://api.wiro.ai/v1/Run/${cleanOwner}/${cleanProject}`;
 
     const bodyPayload = { messages };
-    const maskedKey = apiKey.length > 8 ? `${apiKey.slice(0, 4)}...${apiKey.slice(-4)}` : '***';
-    this.logger.log(`[Wiro Outbound Stream] POST ${url} | x-api-key: ${maskedKey}`);
+    const cleanKey = apiKey.trim();
+    const maskedKey = cleanKey.length > 8 ? `${cleanKey.slice(0, 4)}...${cleanKey.slice(-4)}` : '***';
+    this.logger.log(`[Wiro Outbound Run] POST ${runUrl} | x-api-key: ${maskedKey}`);
 
-    const res = await fetch(url, {
+    const res = await fetch(runUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey.trim(),
+        'x-api-key': cleanKey,
       },
       body: JSON.stringify(bodyPayload),
     });
 
     if (!res.ok) {
       const err = await res.text();
-      this.logger.error(`[Wiro Stream Error] POST ${url} -> Status ${res.status}: ${err}`);
+      this.logger.error(`[Wiro Run Error] POST ${runUrl} -> Status ${res.status}: ${err}`);
       throw new Error(`Wiro execution error (${res.status}): ${err}`);
     }
 
-    const data = await res.json();
-    this.logger.log(`[Wiro Stream Success] POST ${url} -> Completed run`);
-    const fullText = data.output || data.result?.output || data.text || (typeof data === 'string' ? data : JSON.stringify(data));
+    const runData = await res.json();
+    if (!runData.result && runData.errors?.length) {
+      const errMsgs = runData.errors.map((e: any) => e.message || JSON.stringify(e)).join(', ');
+      throw new Error(`Wiro error: ${errMsgs}`);
+    }
 
-    // Stream out chunks for smooth front-end experience
-    const words = fullText.split(' ');
-    for (let i = 0; i < words.length; i++) {
-      const chunk = (i === 0 ? '' : ' ') + words[i];
-      onToken(chunk);
-      if (i % 3 === 0) {
-        await new Promise((r) => setTimeout(r, 20));
+    const socketToken = runData.socketaccesstoken || runData.tasklist?.[0]?.socketaccesstoken;
+    const taskId = runData.taskid || runData.tasklist?.[0]?.id;
+
+    if (!socketToken) {
+      // Fallback if Wiro immediately returned the completed output in response
+      const immediateOutput = this.extractWiroOutputText(runData);
+      if (immediateOutput) {
+        onToken(immediateOutput);
+        return immediateOutput;
+      }
+      throw new Error(`Wiro did not return a socket access token for task ${taskId || 'unknown'}`);
+    }
+
+    this.logger.log(`[Wiro Run Success] Task ${taskId} created. Connecting to WebSocket wss://socket.wiro.ai/v1 ...`);
+
+    return new Promise<string>((resolve, reject) => {
+      let emittedLength = 0;
+      let accumulatedText = '';
+      let settled = false;
+
+      const ws = new WebSocket('wss://socket.wiro.ai/v1');
+
+      // 120-second timeout guard
+      const timeout = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          try { ws.close(); } catch {}
+          if (accumulatedText.trim()) {
+            resolve(accumulatedText);
+          } else {
+            reject(new Error(`Wiro WebSocket stream timed out waiting for task ${taskId}`));
+          }
+        }
+      }, 120000);
+
+      const cleanup = () => {
+        clearTimeout(timeout);
+        settled = true;
+      };
+
+      ws.onopen = () => {
+        this.logger.log(`[Wiro WS Open] Task ${taskId} connected. Sending registration.`);
+        ws.send(JSON.stringify({
+          type: 'task_info',
+          tasktoken: socketToken,
+        }));
+      };
+
+      ws.onmessage = async (event: MessageEvent) => {
+        try {
+          const raw = typeof event.data === 'string' ? event.data : event.data?.toString?.();
+          if (!raw) return;
+          const data = JSON.parse(raw);
+
+          if (data.type === 'task_output') {
+            const msg = data.message;
+            let text = '';
+            if (msg && typeof msg === 'object') {
+              if (Array.isArray(msg.segments) && msg.segments.length > 0) {
+                const answers = msg.segments.filter((s: any) => s.type === 'answer');
+                text = answers.length > 0
+                  ? answers.map((s: any) => s.text || '').join('')
+                  : msg.segments.map((s: any) => s.text || '').join('');
+              } else if (typeof msg.raw === 'string' && msg.raw.trim()) {
+                text = msg.raw;
+              } else if (Array.isArray(msg.answer) && msg.answer.length > 0) {
+                text = msg.answer.join('\n');
+              } else if (typeof msg.text === 'string') {
+                text = msg.text;
+              }
+            } else if (typeof msg === 'string') {
+              text = msg;
+            }
+
+            if (text && text.length > emittedLength) {
+              const delta = text.slice(emittedLength);
+              onToken(delta);
+              emittedLength = text.length;
+              accumulatedText = text;
+            }
+          } else if (data.type === 'task_postprocess_end') {
+            this.logger.log(`[Wiro WS End] Task ${taskId} postprocess completed`);
+            let finalText = accumulatedText;
+            if (Array.isArray(data.message) && data.message.length > 0) {
+              const firstOutput = data.message[0];
+              const content = firstOutput?.content;
+              if (content) {
+                if (typeof content.raw === 'string' && content.raw.trim()) {
+                  finalText = content.raw.trim();
+                } else if (Array.isArray(content.answer) && content.answer.length > 0) {
+                  finalText = content.answer.join('\n').trim();
+                } else if (Array.isArray(content.segments) && content.segments.length > 0) {
+                  finalText = content.segments.map((s: any) => s.text || '').join('').trim();
+                }
+              } else if (typeof firstOutput?.debugoutput === 'string') {
+                finalText = firstOutput.debugoutput.trim();
+              }
+            }
+
+            if (finalText.length > emittedLength) {
+              const remaining = finalText.slice(emittedLength);
+              if (emittedLength === 0 && remaining.length > 30) {
+                // If Wiro delivered full text in one chunk at completion, stream smoothly across tokens
+                const words = remaining.match(/\S+\s*/g) || [remaining];
+                for (const word of words) {
+                  onToken(word);
+                  await new Promise((r) => setTimeout(r, 20));
+                }
+              } else {
+                onToken(remaining);
+              }
+              emittedLength = finalText.length;
+            }
+
+            cleanup();
+            try { ws.close(); } catch {}
+            resolve(finalText || accumulatedText);
+          } else if (data.type === 'task_cancel') {
+            cleanup();
+            try { ws.close(); } catch {}
+            reject(new Error(`Wiro task ${taskId} was cancelled.`));
+          }
+        } catch (err) {
+          this.logger.warn(`[Wiro WS Parse Warning] ${err}`);
+        }
+      };
+
+      ws.onerror = (err: any) => {
+        this.logger.error(`[Wiro WS Error] Task ${taskId}: ${err.message || err}`);
+        if (!settled && !accumulatedText.trim()) {
+          cleanup();
+          reject(new Error(`Wiro WebSocket connection error: ${err.message || 'connection failed'}`));
+        }
+      };
+
+      ws.onclose = () => {
+        if (!settled) {
+          cleanup();
+          if (accumulatedText.trim()) {
+            resolve(accumulatedText);
+          } else {
+            reject(new Error(`Wiro WebSocket closed prematurely for task ${taskId}`));
+          }
+        }
+      };
+    });
+  }
+
+  // --- Local llama.cpp OpenAI-Compatible Chat Completion Helpers ---
+
+  private async callLocalLlamaChatCompletion(
+    modelSlug: string,
+    prompt: string,
+    messages: any[],
+  ): Promise<string> {
+    const baseUrl = this.modelsService.getLocalLlmBaseUrl();
+    const resolvedModelId = this.modelsService.resolveLocalModelId(modelSlug);
+    const url = `${baseUrl}/v1/chat/completions`;
+
+    const chatMessages =
+      messages && messages.length > 0
+        ? messages
+        : [{ role: 'user', content: prompt }];
+
+    this.logger.log(`[Local llama.cpp Call] POST ${url} | model: ${resolvedModelId}`);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: resolvedModelId,
+        messages: chatMessages,
+        stream: false,
+        temperature: 0.8,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      this.logger.error(`[Local llama.cpp Error] POST ${url} -> Status ${res.status}: ${err}`);
+      throw new Error(`Local llama.cpp error (${res.status}): ${err}`);
+    }
+
+    const data = await res.json();
+    const content = data?.choices?.[0]?.message?.content;
+    return typeof content === 'string' ? content.trim() : '';
+  }
+
+  private async streamLocalLlamaChatCompletion(
+    modelSlug: string,
+    messages: any[],
+    onToken: (token: string) => void,
+    temperature = 0.8,
+  ): Promise<string> {
+    const baseUrl = this.modelsService.getLocalLlmBaseUrl();
+    const resolvedModelId = this.modelsService.resolveLocalModelId(modelSlug);
+    const url = `${baseUrl}/v1/chat/completions`;
+
+    this.logger.log(`[Local llama.cpp Stream] POST ${url} | model: ${resolvedModelId}`);
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: resolvedModelId,
+        messages,
+        stream: true,
+        temperature,
+      }),
+    });
+
+    if (!res.ok) {
+      const err = await res.text();
+      this.logger.error(`[Local llama.cpp Stream Error] POST ${url} -> Status ${res.status}: ${err}`);
+      throw new Error(`Local llama.cpp error (${res.status}): ${err}`);
+    }
+
+    if (!res.body) {
+      // Fallback if body is not a ReadableStream
+      const data = await res.json();
+      const content = data?.choices?.[0]?.message?.content || '';
+      if (content) onToken(content);
+      return content;
+    }
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let accumulatedText = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line || !line.startsWith('data:')) continue;
+        const payloadStr = line.slice(5).trim();
+        if (payloadStr === '[DONE]') continue;
+
+        try {
+          const parsed = JSON.parse(payloadStr);
+          const delta = parsed?.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta.length > 0) {
+            accumulatedText += delta;
+            onToken(delta);
+          }
+        } catch {}
       }
     }
 
-    return fullText;
+    // Flush any remaining line in buffer
+    if (buffer.trim().startsWith('data:')) {
+      const payloadStr = buffer.trim().slice(5).trim();
+      if (payloadStr && payloadStr !== '[DONE]') {
+        try {
+          const parsed = JSON.parse(payloadStr);
+          const delta = parsed?.choices?.[0]?.delta?.content;
+          if (typeof delta === 'string' && delta.length > 0) {
+            accumulatedText += delta;
+            onToken(delta);
+          }
+        } catch {}
+      }
+    }
+
+    return accumulatedText.trim() || accumulatedText;
   }
 
   private async simulateStreamCompanionResponse(

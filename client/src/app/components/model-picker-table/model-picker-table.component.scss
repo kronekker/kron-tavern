@@ -1,0 +1,497 @@
+.model-picker-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #0b1120;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 0.65rem;
+}
+
+// 1. Compact Role Summary Tabs
+.role-summary-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+
+  @media (max-width: 680px) {
+    grid-template-columns: 1fr;
+  }
+
+  .role-tab {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.25rem;
+    padding: 0.45rem 0.65rem;
+    background: #131c31;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    color: #cbd5e1;
+    cursor: pointer;
+    text-align: left;
+    transition: all 0.15s ease;
+    min-width: 0;
+
+    &:hover {
+      background: #1e293b;
+      border-color: #475569;
+    }
+
+    &.active {
+      background: #172554;
+      border-color: #38bdf8;
+      box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.35);
+    }
+
+    .tab-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      gap: 0.35rem;
+
+      .role-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        white-space: nowrap;
+      }
+    }
+
+    .tab-model-name {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      width: 100%;
+      font-size: 0.78rem;
+      color: #f8fafc;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+
+      strong {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: 600;
+      }
+
+      .slug-sub {
+        font-size: 0.68rem;
+        color: #64748b;
+        background: #0f172a;
+        padding: 0.05rem 0.35rem;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+    }
+  }
+}
+
+// 2. Local llama.cpp Workstation Bar
+.local-llm-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+
+  .local-bar-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+
+    .local-status-info {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      font-size: 0.75rem;
+
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #ef4444;
+        &.online {
+          background: #10b981;
+          box-shadow: 0 0 6px rgba(16, 185, 129, 0.7);
+        }
+      }
+
+      .local-label {
+        font-weight: 700;
+        color: #a7f3d0;
+      }
+
+      code {
+        font-size: 0.7rem;
+        color: #38bdf8;
+        background: #0f172a;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+      }
+
+      .local-badge {
+        font-size: 0.68rem;
+        padding: 0.08rem 0.4rem;
+        border-radius: 10px;
+        font-weight: 600;
+
+        &.online {
+          background: rgba(16, 185, 129, 0.2);
+          color: #6ee7b7;
+        }
+        &.offline {
+          background: rgba(239, 68, 68, 0.2);
+          color: #fca5a5;
+        }
+      }
+    }
+
+    .local-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+
+      .btn-use-local {
+        background: #059669;
+        color: #fff;
+        border: 1px solid #10b981;
+        border-radius: 5px;
+        padding: 0.22rem 0.55rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.15s;
+
+        &:hover {
+          background: #047857;
+        }
+
+        &.selected {
+          background: #065f46;
+          border-color: #34d399;
+          box-shadow: 0 0 8px rgba(16, 185, 129, 0.35);
+        }
+      }
+
+      .btn-local-icon {
+        background: #1e293b;
+        border: 1px solid #334155;
+        color: #cbd5e1;
+        border-radius: 4px;
+        padding: 0.2rem 0.4rem;
+        font-size: 0.72rem;
+        cursor: pointer;
+
+        &:hover {
+          background: #334155;
+          color: #fff;
+        }
+      }
+    }
+  }
+
+  .local-config-drawer {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid rgba(16, 185, 129, 0.2);
+
+    .chk-enable {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.74rem;
+      color: #e2e8f0;
+      cursor: pointer;
+    }
+
+    .local-url-input {
+      flex: 1;
+      min-width: 180px;
+      background: #090d16;
+      border: 1px solid #334155;
+      color: #f8fafc;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.75rem;
+      font-family: monospace;
+    }
+
+    .btn-save-local {
+      background: #0284c7;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 0.25rem 0.65rem;
+      font-size: 0.74rem;
+      font-weight: 600;
+      cursor: pointer;
+
+      &:hover {
+        background: #0369a1;
+      }
+    }
+  }
+}
+
+// 3. Search & Filter Strip
+.picker-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+
+  .picker-search {
+    flex: 1;
+    position: relative;
+    display: flex;
+    align-items: center;
+
+    .search-icon {
+      position: absolute;
+      left: 0.55rem;
+      font-size: 0.75rem;
+      color: #64748b;
+    }
+
+    input {
+      width: 100%;
+      background: #090d16;
+      border: 1px solid #334155;
+      border-radius: 5px;
+      padding: 0.32rem 1.75rem 0.32rem 1.75rem;
+      font-size: 0.78rem;
+      color: #f8fafc;
+
+      &:focus {
+        outline: none;
+        border-color: #38bdf8;
+      }
+    }
+
+    .btn-clear {
+      position: absolute;
+      right: 0.4rem;
+      background: transparent;
+      border: none;
+      color: #94a3b8;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+  }
+
+  .count-meta {
+    font-size: 0.72rem;
+    color: #64748b;
+    white-space: nowrap;
+  }
+}
+
+// 4. Compact High-Density Table
+.compact-table-viewport {
+  max-height: 270px;
+  overflow-y: auto;
+  border: 1px solid #1e293b;
+  border-radius: 6px;
+  background: #090d16;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 3px;
+  }
+}
+
+.compact-models-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+  text-align: left;
+
+  thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #141e33;
+    color: #94a3b8;
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #334155;
+    white-space: nowrap;
+  }
+
+  tbody tr.model-row {
+    border-bottom: 1px solid #151f32;
+    cursor: pointer;
+    transition: background 0.1s;
+
+    &:hover {
+      background: #162238;
+    }
+
+    &.local-row {
+      background: rgba(16, 185, 129, 0.06);
+      &:hover {
+        background: rgba(16, 185, 129, 0.12);
+      }
+    }
+
+    &.selected {
+      background: rgba(2, 132, 199, 0.22);
+      td {
+        color: #fff;
+      }
+    }
+
+    td {
+      padding: 0.3rem 0.5rem;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+  }
+
+  .col-sel {
+    width: 24px;
+    text-align: center;
+
+    .radio-dot {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      border: 2px solid #475569;
+      position: relative;
+
+      &.checked {
+        border-color: #38bdf8;
+        background: #38bdf8;
+        box-shadow: 0 0 6px rgba(56, 189, 248, 0.6);
+      }
+    }
+  }
+
+  .col-name {
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    .name-cell {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      overflow: hidden;
+
+      .m-title {
+        font-weight: 600;
+        color: #f1f5f9;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .tag-local {
+        font-size: 0.6rem;
+        font-weight: 700;
+        background: #059669;
+        color: #fff;
+        padding: 0.05rem 0.3rem;
+        border-radius: 3px;
+        flex-shrink: 0;
+      }
+    }
+  }
+
+  .col-provider {
+    .provider-tag {
+      font-size: 0.68rem;
+      background: #1e293b;
+      color: #94a3b8;
+      padding: 0.1rem 0.38rem;
+      border-radius: 4px;
+      border: 1px solid #334155;
+
+      &.local-prov {
+        background: rgba(16, 185, 129, 0.15);
+        color: #6ee7b7;
+        border-color: rgba(16, 185, 129, 0.4);
+      }
+    }
+  }
+
+  .col-method {
+    max-width: 170px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #94a3b8;
+    font-size: 0.7rem;
+  }
+
+  .col-time {
+    color: #64748b;
+    font-size: 0.7rem;
+  }
+}
+
+// Cost Badges
+.cost-pill,
+.cost-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.1rem 0.42rem;
+  border-radius: 4px;
+  white-space: nowrap;
+
+  &.cost-local {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.4);
+  }
+
+  &.cost-token {
+    background: rgba(56, 189, 248, 0.15);
+    color: #7dd3fc;
+    border: 1px solid rgba(56, 189, 248, 0.3);
+  }
+
+  &.cost-flat {
+    background: rgba(16, 185, 129, 0.14);
+    color: #6ee7b7;
+    border: 1px solid rgba(16, 185, 129, 0.3);
+  }
+
+  &.cost-tiered {
+    background: rgba(245, 158, 11, 0.15);
+    color: #fcd34d;
+    border: 1px solid rgba(245, 158, 11, 0.35);
+  }
+
+  &.cost-sec {
+    background: rgba(168, 85, 247, 0.15);
+    color: #d8b4fe;
+    border: 1px solid rgba(168, 85, 247, 0.35);
+  }
+
+  &.cost-inherit,
+  &.cost-neutral {
+    background: #1e293b;
+    color: #94a3b8;
+    border: 1px solid #334155;
+  }
+}

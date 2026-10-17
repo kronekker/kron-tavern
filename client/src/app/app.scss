@@ -118,6 +118,78 @@
           background: rgba(56, 189, 248, 0.2);
         }
       }
+
+      &.collapse-nav-btn {
+        background: #131c31;
+        color: #94a3b8;
+        border: 1px solid #334155;
+        padding: 0.38rem 0.55rem;
+        font-size: 0.78rem;
+        line-height: 1;
+
+        &:hover {
+          background: #334155;
+          color: #38bdf8;
+          border-color: #38bdf8;
+        }
+      }
+    }
+  }
+}
+
+.floating-navbar-restore-btn {
+  position: fixed;
+  top: 0.5rem;
+  right: 0.65rem;
+  z-index: 95;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(6px);
+  border: 1px solid #334155;
+  color: #cbd5e1;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  transition: all 0.15s;
+
+  &:hover {
+    background: #1e293b;
+    border-color: #38bdf8;
+    color: #fff;
+  }
+
+  .restore-arrow {
+    font-size: 0.68rem;
+    color: #38bdf8;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-navbar {
+    padding: 0.5rem 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+
+    .nav-brand .brand-subtitle {
+      display: none;
+    }
+
+    .nav-actions {
+      flex-wrap: wrap;
+      gap: 0.35rem;
+
+      .hide-mobile {
+        display: none;
+      }
+
+      .nav-btn {
+        padding: 0.32rem 0.55rem;
+        font-size: 0.74rem;
+      }
     }
   }
 }

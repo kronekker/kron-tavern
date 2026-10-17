@@ -200,6 +200,7 @@ export class SessionsService {
     const decoder = new TextDecoder();
     let buffer = '';
     let finalResult: { message: ChatMessageItem; trace: TurnTraceItem } | null = null;
+    let streamError: string | null = null;
 
     while (true) {
       const { done, value } = await reader.read();
@@ -219,17 +220,18 @@ export class SessionsService {
             } else if (data.type === 'complete') {
               finalResult = { message: data.message, trace: data.trace };
             } else if (data.type === 'error') {
-              throw new Error(data.error);
+              streamError = data.error || 'Server streaming error';
             }
-          } catch (e: any) {
-            if (e.message && e.message.startsWith('Turn execution failed')) {
-              throw e;
-            }
+          } catch {
+            // Ignore incomplete fragments
           }
         }
       }
     }
 
+    if (streamError) {
+      throw new Error(streamError);
+    }
     if (!finalResult) {
       throw new Error('Stream ended without completion payload');
     }

@@ -121,6 +121,19 @@ export interface ModelPricingInfo {
   tokenPricingNote: string | null;
 }
 
+export interface LocalLlmConfig {
+  enabled: boolean;
+  modelsUrl: string;
+}
+
+export interface LocalLlmStatusResponse {
+  config: LocalLlmConfig;
+  online: boolean;
+  models: ModelSummary[];
+  error?: string | null;
+  lastChecked: string | null;
+}
+
 export interface ModelSummary {
   id: string;
   title: string;
@@ -135,6 +148,8 @@ export interface ModelSummary {
   hasParameters: boolean;
   priority: number;
   pricing: ModelPricingInfo;
+  isLocal?: boolean;
+  localEndpoint?: string;
 }
 
 export const DEFAULT_SELECTED_CATEGORIES: string[] = [
@@ -193,6 +208,8 @@ export interface ModelCatalogStats {
   lastUpdated: string | null;
   selectedCategories: string[];
   breakdown: Record<ModelCategoryType, number>;
+  localModelsCount?: number;
+  localOnline?: boolean;
 }
 
 export interface CachedModelDetailResponse {
@@ -216,6 +233,18 @@ export class ModelsService implements OnModuleInit {
   private lastUpdated: string | null = null;
   private selectedCategories: string[] = [...DEFAULT_SELECTED_CATEGORIES];
 
+  // Local llama.cpp state
+  public readonly DEFAULT_LOCAL_LLM_CONFIG: LocalLlmConfig = {
+    enabled: true,
+    modelsUrl: 'http://localhost:8080/models',
+  };
+  private localModels: ModelSummary[] = [];
+  private localRawData: Map<string, any> = new Map();
+  private localOnline = false;
+  private localError: string | null = null;
+  private localLastChecked: string | null = null;
+  private localLastCheckedMs = 0;
+
   constructor(private readonly dbService: DatabaseService) {
     const isInsideServer = existsSync(resolve(process.cwd(), 'nest-cli.json'));
     const rootDir = isInsideServer ? resolve(process.cwd(), '..') : process.cwd();
@@ -229,28 +258,32 @@ export class ModelsService implements OnModuleInit {
     }
   }
 
-  onModuleInit() {
+  async onModuleInit() {
     this.loadFromDisk();
+    await this.syncLocalModels();
   }
 
   loadFromDisk() {
     try {
-      // 1. If catalog cache exists, read it
+      // Load selectedCategories from catalog cache if it exists
       if (existsSync(this.catalogPath)) {
-        const content = JSON.parse(readFileSync(this.catalogPath, 'utf-8'));
-        this.cachedSummaries = content.models || [];
-        this.lastUpdated = content.lastUpdated || null;
-        this.selectedCategories =
-          Array.isArray(content.selectedCategories) && content.selectedCategories.length > 0
-            ? content.selectedCategories
-            : [...DEFAULT_SELECTED_CATEGORIES];
-        this.logger.log(
-          `Loaded ${this.cachedSummaries.length} model summaries across ${this.selectedCategories.length} categories from ${this.catalogPath}`,
-        );
-        return;
+        try {
+          const content = JSON.parse(readFileSync(this.catalogPath, 'utf-8'));
+          this.lastUpdated = content.lastUpdated || null;
+          if (Array.isArray(content.selectedCategories) && content.selectedCategories.length > 0) {
+            this.selectedCategories = content.selectedCategories;
+          }
+          if (!existsSync(this.rawPath) && Array.isArray(content.models)) {
+            this.cachedSummaries = content.models;
+            this.logger.log(
+              `Loaded ${this.cachedSummaries.length} model summaries from ${this.catalogPath}`,
+            );
+            return;
+          }
+        } catch {}
       }
 
-      // 2. If raw file exists, index it into catalog
+      // Index from raw wiro-models.json so pricing rules are always up-to-date
       if (existsSync(this.rawPath)) {
         this.logger.log(`Indexing raw models from ${this.rawPath}...`);
         const rawContent = JSON.parse(readFileSync(this.rawPath, 'utf-8'));
@@ -265,6 +298,212 @@ export class ModelsService implements OnModuleInit {
     }
   }
 
+  // --- Local llama.cpp Discovery & Management ---
+
+  getLocalLlmConfig(): LocalLlmConfig {
+    const saved = this.dbService.getSetting<Partial<LocalLlmConfig>>(
+      'local_llm_config',
+      this.DEFAULT_LOCAL_LLM_CONFIG,
+    );
+    return {
+      enabled: saved.enabled !== undefined ? Boolean(saved.enabled) : true,
+      modelsUrl: saved.modelsUrl?.trim() || this.DEFAULT_LOCAL_LLM_CONFIG.modelsUrl,
+    };
+  }
+
+  getLocalLlmBaseUrl(): string {
+    const { modelsUrl } = this.getLocalLlmConfig();
+    return modelsUrl
+      .replace(/\/v1\/models\/?$/i, '')
+      .replace(/\/models\/?$/i, '')
+      .replace(/\/+$/, '');
+  }
+
+  async setLocalLlmConfig(update: Partial<LocalLlmConfig>): Promise<LocalLlmStatusResponse> {
+    const current = this.getLocalLlmConfig();
+    const next: LocalLlmConfig = {
+      enabled: update.enabled !== undefined ? Boolean(update.enabled) : current.enabled,
+      modelsUrl: update.modelsUrl?.trim() || current.modelsUrl,
+    };
+    this.dbService.setSetting('local_llm_config', next);
+    this.logger.log(`Updated local llama.cpp configuration: ${JSON.stringify(next)}`);
+    return await this.syncLocalModels();
+  }
+
+  async syncLocalModels(): Promise<LocalLlmStatusResponse> {
+    const config = this.getLocalLlmConfig();
+    this.localLastChecked = new Date().toISOString();
+    this.localLastCheckedMs = Date.now();
+
+    if (!config.enabled) {
+      this.localModels = [];
+      this.localRawData.clear();
+      this.localOnline = false;
+      this.localError = null;
+      return this.getLocalLlmStatus();
+    }
+
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 3000);
+      const res = await fetch(config.modelsUrl, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} from ${config.modelsUrl}`);
+      }
+
+      const data = await res.json();
+      const dataList: any[] = Array.isArray(data?.data)
+        ? data.data
+        : Array.isArray(data?.models)
+          ? data.models
+          : [];
+
+      const modelsMap = new Map<string, any>();
+      if (Array.isArray(data?.models)) {
+        for (const m of data.models) {
+          const key = m.model || m.name || m.id;
+          if (key) modelsMap.set(String(key), m);
+        }
+      }
+
+      const discovered: ModelSummary[] = [];
+      this.localRawData.clear();
+
+      for (const item of dataList) {
+        const rawId = String(item.id || item.model || item.name || '').trim();
+        if (!rawId) continue;
+
+        const extraInfo = modelsMap.get(rawId) || {};
+        const meta = item.meta || {};
+        const shortTitle = rawId.includes('/') ? rawId.split('/').pop()! : rawId;
+        const paramsB = meta.n_params ? `${(Number(meta.n_params) / 1e9).toFixed(1)}B params` : '';
+        const ctxK = meta.n_ctx ? `${Math.round(Number(meta.n_ctx) / 1024)}K ctx` : '';
+        const quant =
+          meta.ftype ||
+          extraInfo?.details?.quantization_level ||
+          (rawId.includes(':') ? rawId.split(':').pop() : 'GGUF');
+        const specParts = [paramsB, ctxK, quant].filter(Boolean).join(' • ');
+
+        const slug = `llamacpp/${rawId}`;
+        const summary: ModelSummary = {
+          id: `local:${rawId}`,
+          title: `🖥️ ${shortTitle}`,
+          slug,
+          slugowner: 'llamacpp',
+          slugproject: rawId,
+          description: `Locally hosted LLM running via llama.cpp at ${config.modelsUrl}${specParts ? ' (' + specParts + ')' : ''}. Full model ID: ${rawId}`,
+          image: null,
+          categories: ['llm', 'chat', 'local-llamacpp'],
+          type: 'chat',
+          computingtime: 'Local Workstation',
+          hasParameters: false,
+          priority: 1000,
+          isLocal: true,
+          localEndpoint: config.modelsUrl,
+          pricing: {
+            billingType: 'flat',
+            headlineBadge: '🖥️ $0.00 (Local)',
+            subtext: specParts ? `Local llama.cpp • ${specParts}` : 'Free • Local llama.cpp',
+            primaryMethodCode: 'local',
+            primaryMethodName: 'Local Workstation',
+            primaryMethodExplanation:
+              'Executed locally on this workstation via llama.cpp. Zero token or API charges.',
+            isDynamic: false,
+            isApproximate: false,
+            approximateCost: 0,
+            cpsRate: 0,
+            minPrice: 0,
+            maxPrice: 0,
+            tiers: [
+              {
+                inputs: {},
+                inputsDescription: `Local llama.cpp (${config.modelsUrl})`,
+                price: 0,
+                priceFormatted: '$0.00 (Local Workstation)',
+                priceMethod: 'local',
+                priceMethodName: 'Local llama.cpp',
+                note: `Model: ${rawId}${specParts ? ' • ' + specParts : ''}`,
+              },
+            ],
+            tokenPricingNote: 'Hosted locally via llama.cpp on this workstation — $0.00 per token.',
+          },
+        };
+
+        discovered.push(summary);
+        this.localRawData.set(rawId, { ...item, extraInfo, endpoint: config.modelsUrl });
+      }
+
+      this.localModels = discovered;
+      this.localOnline = true;
+      this.localError = null;
+      this.logger.log(
+        `Discovered ${discovered.length} local llama.cpp model(s) from ${config.modelsUrl}`,
+      );
+    } catch (err: any) {
+      this.localOnline = false;
+      this.localError = err.message || 'Could not reach local llama.cpp server';
+      this.logger.warn(`Local llama.cpp check at ${config.modelsUrl}: ${this.localError}`);
+    }
+
+    return this.getLocalLlmStatus();
+  }
+
+  getLocalLlmStatus(): LocalLlmStatusResponse {
+    return {
+      config: this.getLocalLlmConfig(),
+      online: this.localOnline,
+      models: this.localModels,
+      error: this.localError,
+      lastChecked: this.localLastChecked,
+    };
+  }
+
+  isLocalLlmModel(modelIdOrSlug?: string | null): boolean {
+    if (!modelIdOrSlug) return false;
+    const clean = modelIdOrSlug.trim();
+    const lower = clean.toLowerCase();
+    if (lower.startsWith('llamacpp/') || lower.startsWith('local:') || lower.startsWith('local/')) {
+      return true;
+    }
+    return this.localModels.some(
+      (m) =>
+        m.id.toLowerCase() === lower ||
+        m.slug.toLowerCase() === lower ||
+        m.slugproject.toLowerCase() === lower ||
+        m.title.toLowerCase() === lower,
+    );
+  }
+
+  resolveLocalModelId(modelIdOrSlug: string): string {
+    const clean = modelIdOrSlug.trim();
+    const stripped = clean
+      .replace(/^llamacpp\//i, '')
+      .replace(/^local:/i, '')
+      .replace(/^local\//i, '');
+
+    // If stripped matches a discovered local model, return its exact rawId
+    const found = this.localModels.find(
+      (m) =>
+        m.slugproject.toLowerCase() === stripped.toLowerCase() ||
+        m.slug.toLowerCase() === clean.toLowerCase() ||
+        m.id.toLowerCase() === clean.toLowerCase(),
+    );
+    if (found) return found.slugproject;
+
+    // If stripped is 'default' and we have at least one local model, use the first one
+    if (stripped.toLowerCase() === 'default' && this.localModels.length > 0) {
+      return this.localModels[0].slugproject;
+    }
+
+    return stripped;
+  }
+
   private formatInputsDescription(inputs: Record<string, any>): string {
     if (!inputs || typeof inputs !== 'object' || Object.keys(inputs).length === 0) {
       return 'Default / All Configurations';
@@ -272,6 +511,198 @@ export class ModelsService implements OnModuleInit {
     return Object.entries(inputs)
       .map(([k, v]) => `${k}: ${v}`)
       .join(' • ');
+  }
+
+  private formatCompactPriceNumber(val: number): string {
+    if (val === 0) return '0';
+    if (val >= 1) return Number.isInteger(val) ? String(val) : val.toFixed(2).replace(/\.?0+$/, '');
+    if (val >= 0.01) return val.toFixed(4).replace(/\.?0+$/, '');
+    return val.toFixed(5).replace(/\.?0+$/, '');
+  }
+
+  private extractCostFromReadOutputNote(note?: string | null): {
+    headlineBadge: string;
+    subtext: string;
+    priceFormatted: string;
+    minPrice: number;
+    maxPrice: number;
+  } {
+    if (!note || !note.trim()) {
+      return {
+        headlineBadge: '💬 Token / Metered',
+        subtext: 'Model-Reported Usage',
+        priceFormatted: 'Metered per run',
+        minPrice: 0,
+        maxPrice: 0,
+      };
+    }
+
+    const n = note.replace(/\r?\n/g, ' ').trim();
+
+    // 1. Text + Image token pricing: "text input $5 / 1M tokens, image input $8 / 1M tokens, image output $30 / 1M tokens"
+    let m = n.match(
+      /text input \$([0-9]+(?:\.[0-9]+)?)\s*(?:\/|per)\s*1M tokens,\s*image input \$([0-9]+(?:\.[0-9]+)?)\s*(?:\/|per)\s*1M tokens,\s*image output \$([0-9]+(?:\.[0-9]+)?)\s*(?:\/|per)\s*1M/i,
+    );
+    if (m) {
+      const badge = `In: $${m[1]} (Img $${m[2]}) • Out: $${m[3]} / 1M`;
+      return {
+        headlineBadge: `💬 ${badge}`,
+        subtext: 'Per 1M tokens (Text & Image)',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[3]),
+      };
+    }
+
+    // 2. Multimodal input + text/image output: "input (text/image/video/PDF) $1.50 per 1M tokens, text and thinking output $7.50 per 1M tokens, image output $30 per 1M tokens"
+    m = n.match(
+      /input[^$]*\$([0-9]+(?:\.[0-9]+)?)\s*(?:\/|per)\s*1M tokens,\s*text and thinking output \$([0-9]+(?:\.[0-9]+)?)\s*(?:\/|per)\s*1M tokens(?:,\s*image output \$([0-9]+(?:\.[0-9]+)?)\s*(?:\/|per)\s*1M)?/i,
+    );
+    if (m) {
+      const badge = m[3]
+        ? `In: $${m[1]} • Out: $${m[2]} (Img $${m[3]}) / 1M`
+        : `In: $${m[1]} • Out: $${m[2]} / 1M tok`;
+      return {
+        headlineBadge: `💬 ${badge}`,
+        subtext: 'Per 1M tokens',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[3] || m[2]),
+      };
+    }
+
+    // 3. Standard "input $X per 1M tokens, output $Y per 1M tokens"
+    m = n.match(
+      /input \$([0-9]+(?:\.[0-9]+)?)\s*(?:\/|per)\s*1M tokens,\s*output \$([0-9]+(?:\.[0-9]+)?)\s*(?:\/|per)\s*1M tokens/i,
+    );
+    if (m) {
+      const badge = `In: $${m[1]} • Out: $${m[2]} / 1M tok`;
+      return {
+        headlineBadge: `💬 ${badge}`,
+        subtext: 'Per 1M tokens',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[2]),
+      };
+    }
+
+    // 4. "$X per 1M input tokens ... $Y per 1M output tokens"
+    m = n.match(
+      /\$([0-9]+(?:\.[0-9]+)?)\s*per 1M input tokens.*?\$([0-9]+(?:\.[0-9]+)?)\s*per 1M output tokens/i,
+    );
+    if (m) {
+      const badge = `In: $${m[1]} • Out: $${m[2]} / 1M tok`;
+      return {
+        headlineBadge: `💬 ${badge}`,
+        subtext: 'Per 1M tokens',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[2]),
+      };
+    }
+
+    // 5. "$X (...) for 1m input tokens ... $Y for 1m output tokens"
+    m = n.match(
+      /\$([0-9]+(?:\.[0-9]+)?)\s*(?:\([^)]+\)\s*)?for 1m input tokens.*?\$([0-9]+(?:\.[0-9]+)?)\s*for 1m output tokens/i,
+    );
+    if (m) {
+      const badge = `In: $${m[1]} • Out: $${m[2]} / 1M tok`;
+      return {
+        headlineBadge: `💬 ${badge}`,
+        subtext: 'Per 1M tokens',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[2]),
+      };
+    }
+
+    // 6. "1 million input token $X, 1 million output token $Y"
+    m = n.match(
+      /1 million input token \$([0-9]+(?:\.[0-9]+)?),\s*1 million output token \$([0-9]+(?:\.[0-9]+)?)/i,
+    );
+    if (m) {
+      const badge = `In: $${m[1]} • Out: $${m[2]} / 1M tok`;
+      return {
+        headlineBadge: `💬 ${badge}`,
+        subtext: 'Per 1M tokens',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[2]),
+      };
+    }
+
+    // 7. "$X input (...), $Y output"
+    m = n.match(
+      /\$([0-9]+(?:\.[0-9]+)?)\s*input(?:\s*\([^)]*\))?,\s*(?:\$[0-9.]+\s*cached input,\s*)?\$([0-9]+(?:\.[0-9]+)?)\s*output/i,
+    );
+    if (m) {
+      const badge = `In: $${m[1]} • Out: $${m[2]} / 1M tok`;
+      return {
+        headlineBadge: `💬 ${badge}`,
+        subtext: 'Per 1M tokens',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[2]),
+      };
+    }
+
+    // 8. "Input: $X ... Output: $Y" (flat or tiered)
+    m = n.match(
+      /Input:\s*\$([0-9]+(?:\.[0-9]+)?)(?:\s*\([^)]*\))?(?:\s*\/\s*\$([0-9]+(?:\.[0-9]+)?))?.*?Output:\s*\$([0-9]+(?:\.[0-9]+)?)(?:\s*\([^)]*\))?(?:\s*\/\s*\$([0-9]+(?:\.[0-9]+)?))?/i,
+    );
+    if (m) {
+      const inStr = m[2] ? `$${m[1]}–$${m[2]}` : `$${m[1]}`;
+      const outStr = m[4] ? `$${m[3]}–$${m[4]}` : `$${m[3]}`;
+      const badge = `In: ${inStr} • Out: ${outStr} / 1M tok`;
+      return {
+        headlineBadge: `💬 ${badge}`,
+        subtext: m[2] || m[4] ? 'Tiered per 1M tokens' : 'Per 1M tokens',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[4] || m[3]),
+      };
+    }
+
+    // 9. Video tokens: "$X per 1000 tokens"
+    m = n.match(/\$([0-9]+(?:\.[0-9]+)?)\s*per 1000 tokens/i);
+    if (m) {
+      const badge = `$${m[1]} / 1K tok`;
+      return {
+        headlineBadge: `🎬 ${badge}`,
+        subtext: 'Video resolution × duration tokens',
+        priceFormatted: badge,
+        minPrice: parseFloat(m[1]),
+        maxPrice: parseFloat(m[1]),
+      };
+    }
+
+    // 10. Extract all dollar amounts in note (e.g. per-second or per-image tiered notes)
+    const dollars = [...n.matchAll(/\$([0-9]+(?:\.[0-9]+)?)/g)]
+      .map((x) => parseFloat(x[1]))
+      .filter((x) => !isNaN(x) && x > 0);
+    if (dollars.length > 0) {
+      const min = Math.min(...dollars);
+      const max = Math.max(...dollars);
+      const isPerSec = /per[- ]second|\/s\b|\/sec/i.test(n);
+      const isPerImg = /garment|image|1K:|2K:/i.test(n);
+      const unit = isPerSec ? 'sec' : isPerImg ? 'img' : 'run';
+      const range = min === max ? `$${min}` : `$${min}–$${max}`;
+      return {
+        headlineBadge: `💰 ${range} / ${unit}`,
+        subtext: isPerSec ? 'Metered per video second' : isPerImg ? 'Metered per image tier' : 'Metered usage rate',
+        priceFormatted: `${range} / ${unit}`,
+        minPrice: min,
+        maxPrice: max,
+      };
+    }
+
+    return {
+      headlineBadge: '💬 Metered Token/Run',
+      subtext: n.length > 55 ? n.slice(0, 52) + '...' : n,
+      priceFormatted: 'Metered usage',
+      minPrice: 0,
+      maxPrice: 0,
+    };
   }
 
   public parsePricingInfo(t: any): ModelPricingInfo {
@@ -288,10 +719,11 @@ export class ModelsService implements OnModuleInit {
       const readOutput = dp.find((d: any) => d.priceMethod === 'cp-readoutput');
       if (readOutput) {
         const spec = BILLING_METHODS_REFERENCE['cp-readoutput'];
+        const extracted = this.extractCostFromReadOutputNote(readOutput.note);
         return {
           billingType: 'token-based',
-          headlineBadge: '💬 Token-Based',
-          subtext: 'Model-Reported Token Usage',
+          headlineBadge: extracted.headlineBadge,
+          subtext: extracted.subtext,
           primaryMethodCode: 'cp-readoutput',
           primaryMethodName: spec.name,
           primaryMethodExplanation: spec.description,
@@ -299,13 +731,13 @@ export class ModelsService implements OnModuleInit {
           isApproximate: false,
           approximateCost: null,
           cpsRate: null,
-          minPrice: 0,
-          maxPrice: 0,
+          minPrice: extracted.minPrice,
+          maxPrice: extracted.maxPrice,
           tiers: dp.map((tier: any) => ({
             inputs: tier.inputs || {},
             inputsDescription: this.formatInputsDescription(tier.inputs),
-            price: Number(tier.price) || 0,
-            priceFormatted: '$0 (Reported per token)',
+            price: Number(tier.price) || extracted.minPrice || 0,
+            priceFormatted: extracted.priceFormatted,
             priceMethod: tier.priceMethod || 'cp-readoutput',
             priceMethodName: spec.name,
             note: tier.note,
@@ -324,15 +756,39 @@ export class ModelsService implements OnModuleInit {
         description: 'Billed per model execution.',
       };
 
+      const shortUnits: Record<string, string> = {
+        cpr: 'req',
+        cps: 'sec',
+        cpo: 'output',
+        cpt: 'tok',
+        'cp-pixel': 'MPx',
+        'cp-outputVideoLength': 'vid sec',
+        'cp-audiosecondslength': 'aud sec',
+        'cp-promptlength': 'char',
+        cp: dp[0]?.note && /per second/i.test(dp[0].note) ? 'sec' : 'unit',
+      };
+      const unitLabel = shortUnits[primaryCode] || spec.name;
+
       const isTiered = dp.length > 1 && min !== max;
+      const minFmt = this.formatCompactPriceNumber(min);
+      const maxFmt = this.formatCompactPriceNumber(max);
       const headline = isTiered
-        ? `$${min} – $${max} / ${spec.name}`
-        : `$${min} / ${spec.name}`;
+        ? `$${minFmt}–$${maxFmt} / ${unitLabel}`
+        : `$${minFmt} / ${unitLabel}`;
+
+      // Summarize tier keys if tiered
+      const tierKeys = Array.from(
+        new Set(dp.flatMap((tier: any) => Object.keys(tier.inputs || {}))),
+      );
+      const subtext =
+        dp.length > 1
+          ? `${dp.length} tiers (${tierKeys.slice(0, 2).join(', ') || spec.name})`
+          : `Fixed ${spec.name} rate`;
 
       return {
         billingType: isTiered ? 'tiered' : 'flat',
         headlineBadge: `💰 ${headline}`,
-        subtext: isTiered ? `${dp.length} parameter tiers` : `Fixed ${spec.name} rate`,
+        subtext,
         primaryMethodCode: primaryCode,
         primaryMethodName: spec.name,
         primaryMethodExplanation: spec.description,
@@ -353,7 +809,7 @@ export class ModelsService implements OnModuleInit {
             inputs: tier.inputs || {},
             inputsDescription: this.formatInputsDescription(tier.inputs),
             price: pVal,
-            priceFormatted: `$${pVal} / ${tSpec.name}`,
+            priceFormatted: `$${this.formatCompactPriceNumber(pVal)} / ${tSpec.name}`,
             priceMethod: tier.priceMethod || 'cpr',
             priceMethodName: tSpec.name,
             priceExtra: tier.priceExtra,
@@ -365,16 +821,19 @@ export class ModelsService implements OnModuleInit {
       };
     }
 
-    const approx = Number(t.approximatelycost);
-    if (approx && approx > 0) {
-      const cps = Number(t.cps || t.quegroupcps || 0);
+    const approx = Number(t.approximatelycost) || 0;
+    const cps = Number(t.cps) || Number(t.quegroupcps) || 0;
+
+    if (approx > 0) {
       const spec = BILLING_METHODS_REFERENCE['cps'];
+      const approxStr = this.formatCompactPriceNumber(approx);
+      const cpsStr = cps > 0 ? `$${cps.toFixed(5).replace(/\.?0+$/, '')}/s` : '';
       return {
         billingType: 'approximate',
-        headlineBadge: `⏱️ ~$${approx.toFixed(3)} (est. run)`,
-        subtext: 'Fallback: elapsed seconds × cps rate',
+        headlineBadge: `⏱️ ~$${approxStr} / run${cpsStr ? ' (' + cpsStr + ')' : ''}`,
+        subtext: cpsStr ? `Est. run • GPU rate ${cpsStr}` : 'Est. run (elapsed sec × cps)',
         primaryMethodCode: 'cps',
-        primaryMethodName: 'Per Second (Fallback)',
+        primaryMethodName: 'Per Second (Est. Run)',
         primaryMethodExplanation: spec.description,
         isDynamic: false,
         isApproximate: true,
@@ -387,13 +846,13 @@ export class ModelsService implements OnModuleInit {
       };
     }
 
-    const cps = Number(t.cps || t.quegroupcps);
-    if (cps && cps > 0) {
+    if (cps > 0) {
       const spec = BILLING_METHODS_REFERENCE['cps'];
+      const cpsStr = cps.toFixed(5).replace(/\.?0+$/, '');
       return {
         billingType: 'per-second',
-        headlineBadge: `⏱️ $${cps.toFixed(5)} / sec`,
-        subtext: 'Billed per processing second',
+        headlineBadge: `⏱️ $${cpsStr} / sec`,
+        subtext: 'Billed per GPU second',
         primaryMethodCode: 'cps',
         primaryMethodName: 'Per Second',
         primaryMethodExplanation: spec.description,
@@ -401,8 +860,8 @@ export class ModelsService implements OnModuleInit {
         isApproximate: false,
         approximateCost: null,
         cpsRate: cps,
-        minPrice: null,
-        maxPrice: null,
+        minPrice: cps,
+        maxPrice: cps,
         tiers: [],
         tokenPricingNote: null,
       };
@@ -411,7 +870,7 @@ export class ModelsService implements OnModuleInit {
     return {
       billingType: 'unlisted',
       headlineBadge: 'Free / Unlisted',
-      subtext: 'No dynamic rate specified',
+      subtext: 'No rate specified',
       primaryMethodCode: 'none',
       primaryMethodName: 'Unlisted',
       primaryMethodExplanation: 'No price specified on marketplace.',
@@ -437,7 +896,7 @@ export class ModelsService implements OnModuleInit {
       this.cachedRawTools.set(String(t.id), t);
       summaries.push({
         id: String(t.id),
-        title: t.title || 'Untitled Model',
+        title: t.title || `${t.slugowner || 'unknown'}/${t.slugproject || 'model'}`,
         slug: `${t.slugowner || 'unknown'}/${t.slugproject || ''}`,
         slugowner: t.slugowner || 'unknown',
         slugproject: t.slugproject || '',
@@ -484,8 +943,20 @@ export class ModelsService implements OnModuleInit {
     return 'other';
   }
 
+  private getCombinedSummaries(): ModelSummary[] {
+    const config = this.getLocalLlmConfig();
+    if (!config.enabled) {
+      return this.cachedSummaries;
+    }
+    // Trigger background refresh if local models haven't been checked in 15s
+    if (Date.now() - this.localLastCheckedMs > 15000) {
+      this.syncLocalModels().catch(() => {});
+    }
+    return [...this.localModels, ...this.cachedSummaries];
+  }
+
   getCatalog(type?: string, query?: string): { models: ModelSummary[]; stats: ModelCatalogStats } {
-    let result = this.cachedSummaries;
+    let result = this.getCombinedSummaries();
 
     if (type && type !== 'all') {
       result = result.filter((m) => m.type === type);
@@ -498,7 +969,8 @@ export class ModelsService implements OnModuleInit {
           m.title.toLowerCase().includes(q) ||
           m.slug.toLowerCase().includes(q) ||
           m.description.toLowerCase().includes(q) ||
-          m.slugowner.toLowerCase().includes(q),
+          m.slugowner.toLowerCase().includes(q) ||
+          m.pricing?.headlineBadge?.toLowerCase().includes(q),
       );
     }
 
@@ -509,6 +981,7 @@ export class ModelsService implements OnModuleInit {
   }
 
   getStats(): ModelCatalogStats {
+    const combined = this.getCombinedSummaries();
     const breakdown: Record<ModelCategoryType, number> = {
       chat: 0,
       'text-to-image': 0,
@@ -518,15 +991,17 @@ export class ModelsService implements OnModuleInit {
       other: 0,
     };
 
-    for (const m of this.cachedSummaries) {
+    for (const m of combined) {
       breakdown[m.type] = (breakdown[m.type] || 0) + 1;
     }
 
     return {
-      total: this.cachedSummaries.length,
+      total: combined.length,
       lastUpdated: this.lastUpdated,
       selectedCategories: this.selectedCategories,
       breakdown,
+      localModelsCount: this.localModels.length,
+      localOnline: this.localOnline,
     };
   }
 
@@ -646,6 +1121,42 @@ export class ModelsService implements OnModuleInit {
     refresh = false,
     apiKey?: string,
   ): Promise<CachedModelDetailResponse> {
+    // Handle local llama.cpp models without calling Wiro API
+    if (slugowner.toLowerCase() === 'llamacpp') {
+      if (refresh) {
+        await this.syncLocalModels();
+      }
+      const localMatch =
+        this.localModels.find(
+          (m) =>
+            m.slugproject.toLowerCase() === slugproject.toLowerCase() ||
+            this.sanitizeSlug(m.slugproject) === this.sanitizeSlug(slugproject),
+        ) || this.localModels[0];
+
+      if (localMatch) {
+        const rawLocal = this.localRawData.get(localMatch.slugproject) || {};
+        return {
+          success: true,
+          fromCache: true,
+          cachedAt: this.localLastChecked || new Date().toISOString(),
+          filePath: this.getLocalLlmConfig().modelsUrl,
+          detail: {
+            id: localMatch.id,
+            title: localMatch.title,
+            slugowner: 'llamacpp',
+            slugproject: localMatch.slugproject,
+            description: localMatch.description,
+            computingtime: localMatch.computingtime,
+            categories: localMatch.categories,
+            readme: `## Local llama.cpp Workstation Model\n\n- **Model ID**: \`${localMatch.slugproject}\`\n- **Endpoint**: \`${this.getLocalLlmConfig().modelsUrl}\`\n- **Chat Completions URL**: \`${this.getLocalLlmBaseUrl()}/v1/chat/completions\`\n- **Metadata**: \`${JSON.stringify(rawLocal.meta || {}, null, 2)}\``,
+            parameters: [],
+            rawLlamaCpp: rawLocal,
+          },
+          pricing: localMatch.pricing,
+        };
+      }
+    }
+
     const { dir, filePath, relativePath } = this.getModelFilePath(slugowner, slugproject);
 
     // 1. If cache exists and refresh is NOT requested, read and serve from local disk
@@ -725,6 +1236,9 @@ export class ModelsService implements OnModuleInit {
   }
 
   getModelDetails(id: string): any {
+    const localFound = this.localModels.find((m) => m.id === id || m.slug === id);
+    if (localFound) return localFound;
+
     if (this.cachedRawTools.has(id)) {
       return this.cachedRawTools.get(id);
     }
@@ -826,6 +1340,7 @@ export class ModelsService implements OnModuleInit {
     // Save selectedCategories and index catalog
     this.selectedCategories = targetCategories;
     this.indexAndSaveCatalog(uniqueTools, targetCategories);
+    await this.syncLocalModels();
 
     const stats = this.getStats();
     return {
@@ -846,26 +1361,27 @@ export class ModelsService implements OnModuleInit {
   findModelByIdOrSlug(val?: string | null, expectedType?: ModelCategoryType): ModelSummary | null {
     if (!val || !val.trim()) return null;
     const target = val.trim().toLowerCase();
+    const combined = this.getCombinedSummaries();
 
     // 1. Direct match on id
-    let match = this.cachedSummaries.find((m) => m.id === val.trim());
+    let match = combined.find((m) => m.id.toLowerCase() === target);
     if (match) return match;
 
     // 2. Match on slug
-    match = this.cachedSummaries.find((m) => m.slug.toLowerCase() === target);
+    match = combined.find((m) => m.slug.toLowerCase() === target);
     if (match) return match;
 
     // 3. Match on slugproject
-    match = this.cachedSummaries.find((m) => m.slugproject.toLowerCase() === target);
+    match = combined.find((m) => m.slugproject.toLowerCase() === target);
     if (match) return match;
 
     // 4. Match on title
-    match = this.cachedSummaries.find((m) => m.title.toLowerCase() === target);
+    match = combined.find((m) => m.title.toLowerCase() === target);
     if (match) return match;
 
     // 5. If expectedType given and nothing matched, find first model of that type
     if (expectedType) {
-      const fallback = this.cachedSummaries.find((m) => m.type === expectedType);
+      const fallback = combined.find((m) => m.type === expectedType);
       if (fallback) return fallback;
     }
 

@@ -60,6 +60,21 @@ export interface ModelSummary {
   hasParameters: boolean;
   priority: number;
   pricing: ModelPricingInfo;
+  isLocal?: boolean;
+  localEndpoint?: string;
+}
+
+export interface LocalLlmConfig {
+  enabled: boolean;
+  modelsUrl: string;
+}
+
+export interface LocalLlmStatusResponse {
+  config: LocalLlmConfig;
+  online: boolean;
+  models: ModelSummary[];
+  error?: string | null;
+  lastChecked: string | null;
 }
 
 export interface CategoryGroup {
@@ -80,6 +95,8 @@ export interface ModelCatalogStats {
   lastUpdated: string | null;
   selectedCategories?: string[];
   breakdown: Record<string, number>;
+  localModelsCount?: number;
+  localOnline?: boolean;
 }
 
 export interface ModelCatalogResponse {
@@ -144,6 +161,18 @@ export class ModelsService {
 
   getStats(): Observable<ModelCatalogStats> {
     return this.http.get<ModelCatalogStats>('/api/models/stats');
+  }
+
+  getLocalLlm(refresh = false): Observable<LocalLlmStatusResponse> {
+    let params = new HttpParams();
+    if (refresh) {
+      params = params.set('refresh', 'true');
+    }
+    return this.http.get<LocalLlmStatusResponse>('/api/models/local', { params });
+  }
+
+  updateLocalLlm(config: Partial<LocalLlmConfig>): Observable<LocalLlmStatusResponse> {
+    return this.http.put<LocalLlmStatusResponse>('/api/models/local', config);
   }
 
   getActiveDefaults(): Observable<ResolvedActiveModels> {

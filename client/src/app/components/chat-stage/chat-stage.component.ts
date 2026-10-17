@@ -11,6 +11,8 @@ import {
   ElementRef,
   ViewChild,
   SecurityContext,
+  NgZone,
+  ChangeDetectorRef,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -24,11 +26,12 @@ import {
 } from '../../services/sessions.service';
 import { AuthService } from '../../services/auth.service';
 import { ModelsService, ModelSummary } from '../../services/models.service';
+import { ModelPickerTableComponent } from '../model-picker-table/model-picker-table.component';
 
 @Component({
   selector: 'app-chat-stage',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModelPickerTableComponent],
   templateUrl: './chat-stage.component.html',
   styleUrls: ['./chat-stage.component.scss'],
 })
@@ -37,15 +40,24 @@ export class ChatStageComponent implements OnInit, OnChanges {
   private modelsService = inject(ModelsService);
   private authService = inject(AuthService);
   private sanitizer = inject(DomSanitizer);
+  private ngZone = inject(NgZone);
+  private cdr = inject(ChangeDetectorRef);
 
   @ViewChild('messagesScroll') private messagesScrollContainer!: ElementRef<HTMLDivElement>;
   @ViewChild('chatTextarea') private chatTextareaElement!: ElementRef<HTMLTextAreaElement>;
 
   // Input & Output
   sessionId = input.required<string>();
+  isAppNavbarCollapsed = input<boolean>(false);
+  toggleAppNavbar = output<void>();
+  setAppNavbarCollapsed = output<boolean>();
   close = output<void>();
   switchSession = output<string>();
   startNewSessionRequest = output<void>();
+  openSessionsModal = output<void>();
+
+  // Collapsible Stage Header State (for mobile & compact chat real estate)
+  isStageHeaderCollapsed = signal<boolean>(false);
 
   // Main Session State
   loading = signal<boolean>(true);
@@ -116,8 +128,26 @@ export class ChatStageComponent implements OnInit, OnChanges {
   });
 
   ngOnInit() {
+    if (typeof window !== 'undefined' && window.innerWidth <= 768) {
+      this.isStageHeaderCollapsed.set(true);
+      this.setAppNavbarCollapsed.emit(true);
+    }
     this.loadSession(this.sessionId());
     this.loadCatalogModels();
+  }
+
+  collapseTopToolbars() {
+    this.isStageHeaderCollapsed.set(true);
+    this.setAppNavbarCollapsed.emit(true);
+  }
+
+  restoreStageToolbar() {
+    this.isStageHeaderCollapsed.set(false);
+  }
+
+  restoreAllToolbars() {
+    this.isStageHeaderCollapsed.set(false);
+    this.setAppNavbarCollapsed.emit(false);
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -195,21 +225,30 @@ export class ChatStageComponent implements OnInit, OnChanges {
         currentSession.id,
         text,
         (token: string) => {
-          this.streamingTokens.update((prev) => prev + token);
-          this.scrollToBottom();
+          this.ngZone.run(() => {
+            this.streamingTokens.update((prev) => prev + token);
+            this.cdr.detectChanges();
+            this.scrollToBottom();
+          });
         },
       );
 
-      // Replace optimistic message with canonical state or append complete assistant message
-      this.messages.update((list) => [...list, result.message]);
-      this.isStreaming.set(false);
-      this.streamingTokens.set('');
-      this.scrollToBottom();
+      this.ngZone.run(() => {
+        // Replace optimistic message with canonical state or append complete assistant message
+        this.messages.update((list) => [...list, result.message]);
+        this.isStreaming.set(false);
+        this.streamingTokens.set('');
+        this.cdr.detectChanges();
+        this.scrollToBottom();
+      });
     } catch (err: any) {
-      console.error('Failed to stream response:', err);
-      this.isStreaming.set(false);
-      this.streamingTokens.set('');
-      alert(err.message || 'Error occurred during generation. Please try again.');
+      this.ngZone.run(() => {
+        console.error('Failed to stream response:', err);
+        this.isStreaming.set(false);
+        this.streamingTokens.set('');
+        this.cdr.detectChanges();
+        alert(err.message || 'Error occurred during generation. Please try again.');
+      });
     }
   }
 
@@ -271,24 +310,33 @@ export class ChatStageComponent implements OnInit, OnChanges {
         currentSession.id,
         directive,
         (token: string) => {
-          this.streamingTokens.update((prev) => prev + token);
-          this.scrollToBottom();
+          this.ngZone.run(() => {
+            this.streamingTokens.update((prev) => prev + token);
+            this.cdr.detectChanges();
+            this.scrollToBottom();
+          });
         },
       );
 
-      this.messages.update((list) => [...list, result.message]);
-      this.isStreaming.set(false);
-      this.isRerolling.set(false);
-      this.streamingTokens.set('');
-      this.scrollToBottom();
+      this.ngZone.run(() => {
+        this.messages.update((list) => [...list, result.message]);
+        this.isStreaming.set(false);
+        this.isRerolling.set(false);
+        this.streamingTokens.set('');
+        this.cdr.detectChanges();
+        this.scrollToBottom();
+      });
     } catch (err: any) {
-      console.error('Reroll failed:', err);
-      this.isStreaming.set(false);
-      this.isRerolling.set(false);
-      this.streamingTokens.set('');
-      // Reload session to restore canonical state
-      this.loadSession(currentSession.id);
-      alert(err.message || 'Reroll failed. Session reloaded.');
+      this.ngZone.run(() => {
+        console.error('Reroll failed:', err);
+        this.isStreaming.set(false);
+        this.isRerolling.set(false);
+        this.streamingTokens.set('');
+        this.cdr.detectChanges();
+        // Reload session to restore canonical state
+        this.loadSession(currentSession.id);
+        alert(err.message || 'Reroll failed. Session reloaded.');
+      });
     }
   }
 
@@ -544,21 +592,47 @@ export class ChatStageComponent implements OnInit, OnChanges {
     }, 20);
   }
 
-  formatRoleplayText(content: string): SafeHtml {
+  formatRoleplayText(content: string, isStreaming = false): SafeHtml {
     if (!content) return '';
 
-    // Sanitize raw text to prevent XSS
-    let escaped = this.sanitizer.sanitize(SecurityContext.HTML, content) || '';
+    // 1. Sanitize raw text to prevent XSS while preserving quotes and formatting characters
+    const escaped = content
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
 
-    // Style actions in asterisks: *action* -> <em class="rp-action">*action*</em>
-    escaped = escaped.replace(/\*([^*\n]+)\*/g, '<em class="rp-action">*$1*</em>');
+    // 2. Split by newline so each line break becomes a distinct span with vertical spacing
+    const rawLines = escaped.split(/\r?\n/);
+    const htmlLines: string[] = [];
 
-    // Style spoken dialogue in quotes: "dialogue" -> <span class="rp-dialogue">"$1"</span>
-    escaped = escaped.replace(/"([^"\n]+)"/g, '<span class="rp-dialogue">"$1"</span>');
+    for (let i = 0; i < rawLines.length; i++) {
+      let line = rawLines[i];
+      const isLastLine = i === rawLines.length - 1;
 
-    // Replace linebreaks with <br>
-    escaped = escaped.replace(/\n/g, '<br>');
+      if (!line.trim()) {
+        const spacerCursor = isStreaming && isLastLine ? '<span class="streaming-cursor">▌</span>' : '&nbsp;';
+        htmlLines.push(`<span class="rp-line rp-line-spacer">${spacerCursor}</span>`);
+        continue;
+      }
 
-    return this.sanitizer.bypassSecurityTrustHtml(escaped);
+      // 1. Temporarily replace dialogue quotes with placeholders so HTML class attributes are not matched
+      line = line.replace(/(?:“|")([^“”"\n]+?)(?:”|")/g, '___RP_D_START___$1___RP_D_END___');
+
+      // 2. Bold and italic formatting tags
+      line = line.replace(/\*\*\*([^*\n]+?)\*\*\*/g, '<strong class="rp-bold"><em class="rp-action">$1</em></strong>');
+      line = line.replace(/\*\*([^*\n]+?)\*\*/g, '<strong class="rp-bold">$1</strong>');
+      line = line.replace(/\*([^*\n]+?)\*/g, '<em class="rp-action">$1</em>');
+
+      // 3. Restore dialogue spans
+      line = line.replace(/___RP_D_START___/g, '<span class="rp-dialogue">"');
+      line = line.replace(/___RP_D_END___/g, '"</span>');
+
+      // Append blinking cursor if streaming on the active last line
+      const cursorHtml = isStreaming && isLastLine ? '<span class="streaming-cursor">▌</span>' : '';
+
+      htmlLines.push(`<span class="rp-line">${line}${cursorHtml}</span>`);
+    }
+
+    return this.sanitizer.bypassSecurityTrustHtml(htmlLines.join(''));
   }
 }

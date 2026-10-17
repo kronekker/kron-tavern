@@ -6,11 +6,12 @@ import { CharactersService, CharacterItem } from '../../services/characters.serv
 import { PersonasService, PersonaItem } from '../../services/personas.service';
 import { ModelsService, ModelSummary } from '../../services/models.service';
 import { AuthService } from '../../services/auth.service';
+import { ModelPickerTableComponent } from '../model-picker-table/model-picker-table.component';
 
 @Component({
   selector: 'app-session-setup-modal',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModelPickerTableComponent],
   templateUrl: './session-setup-modal.component.html',
   styleUrls: ['./session-setup-modal.component.scss'],
 })
@@ -41,7 +42,7 @@ export class SessionSetupModalComponent implements OnInit {
   quickPersonaDesc = signal<string>('');
 
   // Multimodal Models Triad
-  showAdvancedModels = signal<boolean>(false);
+  showAdvancedModels = signal<boolean>(true);
   chatModel = signal<string>('');
   textToImageModel = signal<string>('');
   imageToImageModel = signal<string>('');

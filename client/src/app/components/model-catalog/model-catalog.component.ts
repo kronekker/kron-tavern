@@ -69,9 +69,21 @@ export class ModelCatalogComponent implements OnInit {
   loadingDetails = signal<boolean>(false);
   activeDetailTab = signal<'specs' | 'pricing' | 'schema' | 'raw'>('specs');
 
+  // View mode: default to compact tabular display so many models and costs can be seen at once
+  viewMode = signal<'table' | 'grid'>('table');
+
+  // Local llama.cpp status & config
+  localLlmModelsUrl = signal<string>('http://localhost:8080/models');
+  localLlmEnabled = signal<boolean>(true);
+  localLlmOnline = signal<boolean>(false);
+  localLlmCount = signal<number>(0);
+  localLlmFirstSlug = signal<string>('');
+  editingLocalUrl = signal<boolean>(false);
+  checkingLocalLlm = signal<boolean>(false);
+
   // Pagination for smooth rendering of hundreds of models
   currentPage = signal<number>(1);
-  pageSize = signal<number>(24);
+  pageSize = computed<number>(() => (this.viewMode() === 'table' ? 80 : 24));
 
   // Filtered list
   filteredModels = computed(() => {
@@ -91,6 +103,7 @@ export class ModelCatalogComponent implements OnInit {
           m.slugowner.toLowerCase().includes(q) ||
           m.description.toLowerCase().includes(q) ||
           m.pricing?.headlineBadge?.toLowerCase().includes(q) ||
+          m.pricing?.subtext?.toLowerCase().includes(q) ||
           m.pricing?.primaryMethodName?.toLowerCase().includes(q),
       );
     }
@@ -114,6 +127,66 @@ export class ModelCatalogComponent implements OnInit {
     this.loadBillingReference();
     this.loadCategoryMetadata();
     this.loadDefaults();
+    this.loadLocalLlm(false);
+  }
+
+  setViewMode(mode: 'table' | 'grid') {
+    this.viewMode.set(mode);
+    this.currentPage.set(1);
+  }
+
+  loadLocalLlm(refresh = false) {
+    this.checkingLocalLlm.set(true);
+    this.modelsService.getLocalLlm(refresh).subscribe({
+      next: (res) => {
+        this.checkingLocalLlm.set(false);
+        this.localLlmEnabled.set(res.config.enabled);
+        this.localLlmModelsUrl.set(res.config.modelsUrl);
+        this.localLlmOnline.set(res.online);
+        this.localLlmCount.set(res.models?.length || 0);
+        this.localLlmFirstSlug.set(res.models?.[0]?.slug || '');
+        if (refresh) {
+          this.loadCatalog();
+        }
+      },
+      error: () => {
+        this.checkingLocalLlm.set(false);
+        this.localLlmOnline.set(false);
+      },
+    });
+  }
+
+  saveLocalLlmSettings() {
+    const url = this.localLlmModelsUrl().trim() || 'http://localhost:8080/models';
+    this.checkingLocalLlm.set(true);
+    this.modelsService
+      .updateLocalLlm({
+        enabled: this.localLlmEnabled(),
+        modelsUrl: url,
+      })
+      .subscribe({
+        next: (res) => {
+          this.checkingLocalLlm.set(false);
+          this.editingLocalUrl.set(false);
+          this.localLlmOnline.set(res.online);
+          this.localLlmCount.set(res.models?.length || 0);
+          this.localLlmFirstSlug.set(res.models?.[0]?.slug || '');
+          this.loadCatalog();
+          this.notification.set({
+            type: res.online ? 'success' : 'info',
+            message: res.online
+              ? `🖥️ Connected to local llama.cpp at ${res.config.modelsUrl} (${res.models.length} model detected).`
+              : `Saved local llama.cpp URL (${res.config.modelsUrl}), currently offline.`,
+          });
+        },
+        error: (err) => {
+          this.checkingLocalLlm.set(false);
+          this.notification.set({
+            type: 'error',
+            message: err.error?.message || 'Failed to update local llama.cpp configuration.',
+          });
+        },
+      });
   }
 
   loadDefaults() {

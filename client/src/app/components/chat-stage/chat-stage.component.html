@@ -1,59 +1,114 @@
 <div class="chat-stage-container">
-  <!-- Top Stage Navbar -->
-  <header class="stage-header">
-    <div class="header-left">
-      <button class="stage-nav-btn back-btn" (click)="close.emit()" title="Return to Tavern">
-        <span>← Tavern</span>
-      </button>
+  <!-- Top Stage Navbar (Collapsible) -->
+  @if (!isStageHeaderCollapsed()) {
+    <header class="stage-header">
+      <div class="header-left">
+        <button class="stage-nav-btn back-btn" (click)="close.emit()" title="Return to Tavern">
+          <span>← Tavern</span>
+        </button>
 
-      @if (character(); as char) {
-        <div class="companion-identity">
-          <div class="avatar-ring">
-            @if (char.avatar_url) {
-              <img [src]="char.avatar_url" [alt]="char.name" class="companion-avatar" />
-            } @else {
-              <div class="avatar-fallback">{{ char.name.charAt(0) }}</div>
-            }
-          </div>
-          <div class="identity-info">
-            <div class="name-row">
-              <h2 class="companion-name">{{ char.name }}</h2>
-              @if (persona(); as p) {
-                <span class="persona-tag" title="Your Active Persona in this Scene">
-                  👤 Roleplaying as <strong>{{ p.name }}</strong>
-                </span>
+        @if (character(); as char) {
+          <div class="companion-identity">
+            <div class="avatar-ring">
+              @if (char.avatar_url) {
+                <img [src]="char.avatar_url" [alt]="char.name" class="companion-avatar" />
+              } @else {
+                <div class="avatar-fallback">{{ char.name.charAt(0) }}</div>
               }
             </div>
-            @if (char.tagline) {
-              <span class="companion-tagline">{{ char.tagline }}</span>
-            }
+            <div class="identity-info">
+              <div class="name-row">
+                <h2 class="companion-name">{{ char.name }}</h2>
+                @if (persona(); as p) {
+                  <span class="persona-tag" title="Your Active Persona in this Scene">
+                    👤 Roleplaying as <strong>{{ p.name }}</strong>
+                  </span>
+                }
+              </div>
+              @if (char.tagline) {
+                <span class="companion-tagline">{{ char.tagline }}</span>
+              }
+            </div>
           </div>
-        </div>
-      }
-    </div>
+        }
+      </div>
 
-    <div class="header-right">
-      <!-- Active Multimodal Models Pill -->
-      @if (session(); as s) {
-        <button class="models-triad-pill" (click)="openModelConfigModal()" title="View & Configure Multimodal Models for this Session">
-          <span class="pill-segment" title="Chat Model">💬 {{ s.chat_model }}</span>
-          <span class="pill-divider">|</span>
-          <span class="pill-segment" title="Avatar Generation Model">🎨 {{ s.text_to_image_model }}</span>
-          <span class="pill-divider">|</span>
-          <span class="pill-segment" title="Expression / Scene Model">🖼️ {{ s.image_to_image_model }}</span>
-          <span class="gear-icon">⚙️</span>
+      <div class="header-right">
+        <!-- Active Multimodal Models Pill -->
+        @if (session(); as s) {
+          <button class="models-triad-pill" (click)="openModelConfigModal()" title="View & Configure Multimodal Models for this Session">
+            <span class="pill-segment" title="Chat Model">💬 {{ s.chat_model }}</span>
+            <span class="pill-divider hide-sm">|</span>
+            <span class="pill-segment hide-sm" title="Avatar Generation Model">🎨 {{ s.text_to_image_model }}</span>
+            <span class="pill-divider hide-sm">|</span>
+            <span class="pill-segment hide-sm" title="Expression / Scene Model">🖼️ {{ s.image_to_image_model }}</span>
+            <span class="gear-icon">⚙️</span>
+          </button>
+        }
+
+        <button class="stage-nav-btn" (click)="openCompressModal()" title="Create Context Compression Boundary">
+          <span>📦 <span class="btn-text-sm">Compress</span></span>
         </button>
-      }
 
-      <button class="stage-nav-btn" (click)="openCompressModal()" title="Create Context Compression Boundary">
-        <span>📦 Compress</span>
+        <button class="stage-nav-btn" (click)="openSessionsModal.emit()" title="View, Resume & Delete Chat Sessions">
+          <span>📜 <span class="btn-text-sm">Sessions</span></span>
+        </button>
+
+        @if (isAppNavbarCollapsed()) {
+          <button
+            class="stage-nav-btn icon-only-btn"
+            (click)="setAppNavbarCollapsed.emit(false)"
+            title="Show Main Tavern Top Bar"
+            aria-label="Show Main Tavern Top Bar"
+          >
+            <span>🏰 ▾</span>
+          </button>
+        }
+
+        <button
+          class="stage-nav-btn collapse-stage-btn"
+          (click)="collapseTopToolbars()"
+          title="Collapse Top Toolbars (Maximize Chat Space)"
+          aria-label="Collapse Top Toolbars"
+        >
+          <span>▴</span>
+        </button>
+      </div>
+    </header>
+  } @else {
+    <!-- Compact Floating Icon Pill to Restore Toolbars -->
+    <div class="collapsed-toolbar-pill">
+      <button
+        class="pill-restore-btn"
+        (click)="restoreStageToolbar()"
+        title="Restore Session Toolbar"
+        aria-label="Restore Session Toolbar"
+      >
+        @if (character(); as char) {
+          <span class="mini-char-name">{{ char.name }}</span>
+        } @else {
+          <span>💬</span>
+        }
+        <span class="restore-caret">▾</span>
       </button>
-
-      <button class="stage-nav-btn" (click)="openSessionsDrawer()" title="View and Switch Sessions">
-        <span>📜 Sessions ({{ messageCount() }})</span>
+      <button
+        class="pill-icon-btn"
+        (click)="openModelConfigModal()"
+        title="Configure Session AI Models"
+        aria-label="Configure Session AI Models"
+      >
+        ⚙️
+      </button>
+      <button
+        class="pill-icon-btn"
+        (click)="restoreAllToolbars()"
+        title="Restore All Top Toolbars (Tavern + Session)"
+        aria-label="Restore All Top Toolbars"
+      >
+        🏰
       </button>
     </div>
-  </header>
+  }
 
   <!-- Message Timeline / Chat History -->
   <main class="timeline-viewport" #messagesScroll>
@@ -210,8 +265,16 @@
                 <span class="streaming-pill">✨ Generating...</span>
               </div>
               <div class="bubble-content streaming-content">
-                <span [innerHTML]="formatRoleplayText(streamingTokens())"></span>
-                <span class="streaming-cursor">▌</span>
+                @if (streamingTokens()) {
+                  <div class="rendered-lines" [innerHTML]="formatRoleplayText(streamingTokens(), true)"></div>
+                } @else {
+                  <div class="streaming-thinking">
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="typing-dot"></span>
+                    <span class="thinking-text">{{ character()?.name || 'Companion' }} is composing...</span>
+                  </div>
+                }
               </div>
             </div>
           </div>
@@ -571,32 +634,23 @@
   <!-- Multimodal Models Config Modal -->
   @if (showModelConfigModal()) {
     <div class="modal-backdrop" (click)="showModelConfigModal.set(false)">
-      <div class="modal-card" (click)="$event.stopPropagation()">
+      <div class="modal-card wide-modal" (click)="$event.stopPropagation()">
         <div class="modal-header">
           <h3>⚙️ Configure Session Multimodal Models</h3>
           <button class="modal-close-btn" (click)="showModelConfigModal.set(false)">✕</button>
         </div>
         <div class="modal-body">
-          <label class="input-label">Chat LLM Model (Roleplay Dialogue)</label>
-          <select [(ngModel)]="editChatModel" class="modal-select">
-            @for (m of chatModelsList(); track m.slug) {
-              <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
-            }
-          </select>
-
-          <label class="input-label">Avatar Synthesis Model (Text-to-Image)</label>
-          <select [(ngModel)]="editTextToImageModel" class="modal-select">
-            @for (m of textToImageModelsList(); track m.slug) {
-              <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
-            }
-          </select>
-
-          <label class="input-label">Scene & Pose Model (Image-to-Image)</label>
-          <select [(ngModel)]="editImageToImageModel" class="modal-select">
-            @for (m of imageToImageModelsList(); track m.slug) {
-              <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
-            }
-          </select>
+          <app-model-picker-table
+            [chatModels]="chatModelsList()"
+            [textToImageModels]="textToImageModelsList()"
+            [imageToImageModels]="imageToImageModelsList()"
+            [chatModel]="editChatModel()"
+            [textToImageModel]="editTextToImageModel()"
+            [imageToImageModel]="editImageToImageModel()"
+            (chatModelChange)="editChatModel.set($event)"
+            (textToImageModelChange)="editTextToImageModel.set($event)"
+            (imageToImageModelChange)="editImageToImageModel.set($event)"
+          />
         </div>
         <div class="modal-actions">
           <button class="btn-sub primary" (click)="saveSessionModels()" [disabled]="isSavingModels()">

@@ -40,6 +40,11 @@ export class UpdateUserPreferredModelsDto {
   imageToImageModel?: string | null;
 }
 
+export class UpdateLocalLlmConfigDto {
+  enabled?: boolean;
+  modelsUrl?: string;
+}
+
 @ApiTags('models')
 @Controller('models')
 export class ModelsController {
@@ -47,6 +52,28 @@ export class ModelsController {
     private readonly modelsService: ModelsService,
     private readonly authService: AuthService,
   ) {}
+
+  @Get('local')
+  @ApiOperation({
+    summary: 'Get local llama.cpp LLM configuration, connection status, and discovered models',
+  })
+  @ApiQuery({ name: 'refresh', required: false, type: Boolean })
+  async getLocalLlm(@Query('refresh') refresh?: string | boolean) {
+    if (refresh === true || refresh === 'true' || refresh === '1') {
+      return await this.modelsService.syncLocalModels();
+    }
+    return this.modelsService.getLocalLlmStatus();
+  }
+
+  @Put('local')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Update local llama.cpp LLM configuration (enabled, modelsUrl) and sync models',
+  })
+  async updateLocalLlm(@Body() body: UpdateLocalLlmConfigDto) {
+    return await this.modelsService.setLocalLlmConfig(body || {});
+  }
 
   @Get('defaults')
   @UseGuards(OptionalAuthGuard)

@@ -131,7 +131,51 @@
         }
       </div>
 
-      <!-- Search Input -->
+      <!-- Local Workstation llama.cpp Bar -->
+      <div class="local-llm-catalog-bar" [class.online]="localLlmOnline()">
+        <div class="local-left">
+          <span class="status-dot" [class.online]="localLlmOnline()"></span>
+          <span class="local-title">🖥️ Local Workstation LLM (llama.cpp):</span>
+          @if (!editingLocalUrl()) {
+            <code class="local-endpoint">{{ localLlmModelsUrl() }}</code>
+            @if (localLlmOnline()) {
+              <span class="local-pill online">Online • {{ localLlmCount() }} model(s) • Free ($0)</span>
+            } @else {
+              <span class="local-pill offline">Offline / Unreachable</span>
+            }
+          } @else {
+            <input
+              type="text"
+              class="local-url-input"
+              [(ngModel)]="localLlmModelsUrl"
+              placeholder="http://localhost:8080/models"
+            />
+            <label class="local-enable-chk">
+              <input type="checkbox" [(ngModel)]="localLlmEnabled" />
+              Enabled
+            </label>
+          }
+        </div>
+        <div class="local-right">
+          @if (!editingLocalUrl()) {
+            <button class="btn-local-sm" (click)="loadLocalLlm(true)" [disabled]="checkingLocalLlm()">
+              {{ checkingLocalLlm() ? '...' : '🔄 Probe' }}
+            </button>
+            <button class="btn-local-sm" (click)="editingLocalUrl.set(true)">
+              ⚙️ Endpoint URL
+            </button>
+          } @else {
+            <button class="btn-local-sm primary" (click)="saveLocalLlmSettings()" [disabled]="checkingLocalLlm()">
+              Save
+            </button>
+            <button class="btn-local-sm" (click)="editingLocalUrl.set(false)">
+              Cancel
+            </button>
+          }
+        </div>
+      </div>
+
+      <!-- Search Input & View Switcher -->
       <div class="search-row">
         <div class="search-box">
           <span class="search-icon">🔍</span>
@@ -139,12 +183,34 @@
             type="text" 
             [(ngModel)]="searchQuery" 
             (ngModelChange)="onSearchChange()" 
-            placeholder="Search by title, provider (e.g. OpenAI, Google, ByteDance), slug, pricing ($0.03, token)..." 
+            placeholder="Search by title, provider (local-llama-cpp, OpenAI, Google), slug, or cost ($0.03, token, free)..." 
           />
           @if (searchQuery()) {
             <button class="btn-clear" (click)="clearSearch()">✕</button>
           }
         </div>
+
+        <div class="view-mode-toggle">
+          <button
+            type="button"
+            class="view-btn"
+            [class.active]="viewMode() === 'table'"
+            (click)="setViewMode('table')"
+            title="Compact Tabular Display"
+          >
+            📊 Compact Table
+          </button>
+          <button
+            type="button"
+            class="view-btn"
+            [class.active]="viewMode() === 'grid'"
+            (click)="setViewMode('grid')"
+            title="Visual Card Grid"
+          >
+            🃏 Card Grid
+          </button>
+        </div>
+
         <div class="results-count">
           Showing <strong>{{ filteredModels().length }}</strong> models
         </div>
@@ -152,13 +218,13 @@
 
     </div>
 
-    <!-- Main Catalog Grid Area -->
+    <!-- Main Catalog Content Area -->
     <div class="catalog-content">
       
       @if (loading()) {
         <div class="loading-state">
           <div class="spinner"></div>
-          <span>Loading Wiro.ai models catalog...</span>
+          <span>Loading multimodal AI models catalog...</span>
         </div>
       } @else if (filteredModels().length === 0) {
         <div class="empty-state">
@@ -170,6 +236,106 @@
           }
         </div>
       } @else {
+
+        @if (viewMode() === 'table') {
+          <div class="catalog-table-wrapper">
+            <table class="catalog-compact-table">
+              <thead>
+                <tr>
+                  <th class="col-type">Type</th>
+                  <th class="col-model">Model & Identifier</th>
+                  <th class="col-provider">Provider</th>
+                  <th class="col-cost">Cost Summary</th>
+                  <th class="col-billing">Billing Method & Basis</th>
+                  <th class="col-speed">Speed</th>
+                  <th class="col-actions">Quick Select / Inspect</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (model of paginatedModels(); track model.id) {
+                  <tr
+                    class="catalog-table-row"
+                    [class.is-default]="isSystemDefault(model)"
+                    [class.is-preferred]="isUserPreferred(model)"
+                    [class.is-local]="model.slugowner === 'local-llama-cpp'"
+                    (click)="displayModel(model, false)"
+                  >
+                    <td class="col-type">
+                      <span class="badge category-badge" [class]="getCategoryBadgeClass(model.type)">
+                        {{ getCategoryLabel(model.type) }}
+                      </span>
+                    </td>
+                    <td class="col-model">
+                      <div class="tbl-model-main">
+                        <span class="tbl-model-title">{{ model.title }}</span>
+                        @if (model.slugowner === 'local-llama-cpp') {
+                          <span class="tbl-role-tag local">🖥️ Local llama.cpp</span>
+                        }
+                        @if (isSystemDefault(model)) {
+                          <span class="tbl-role-tag default">👑 Default</span>
+                        }
+                        @if (isUserPreferred(model)) {
+                          <span class="tbl-role-tag preferred">🎯 Preferred</span>
+                        }
+                      </div>
+                      <span class="tbl-model-slug">{{ model.slug }}</span>
+                    </td>
+                    <td class="col-provider">
+                      <span class="tbl-provider">{{ model.slugowner }}</span>
+                    </td>
+                    <td class="col-cost">
+                      <span class="pricing-badge" [class]="getPricingPillClass(model.pricing)">
+                        {{ model.pricing.headlineBadge }}
+                      </span>
+                    </td>
+                    <td class="col-billing">
+                      <div class="tbl-billing-info">
+                        <span class="tbl-billing-sub" [title]="model.pricing.subtext">{{ model.pricing.subtext }}</span>
+                        <span class="tbl-billing-method">{{ model.pricing.primaryMethodName }} (<code>{{ model.pricing.primaryMethodCode }}</code>)</span>
+                      </div>
+                    </td>
+                    <td class="col-speed">
+                      <span class="tbl-speed">{{ model.computingtime || '—' }}</span>
+                    </td>
+                    <td class="col-actions" (click)="$event.stopPropagation()">
+                      <div class="tbl-actions-group">
+                        @if (['chat', 'text-to-image', 'image-to-image'].includes(model.type)) {
+                          @if (authService.isAuthenticated()) {
+                            <button
+                              class="btn-tbl-act pref"
+                              [class.active]="isUserPreferred(model)"
+                              (click)="isUserPreferred(model) ? revertUserPreference(model) : setAsUserPreferred(model)"
+                              title="Set or revert personal preferred model"
+                            >
+                              🎯 {{ isUserPreferred(model) ? 'Preferred' : 'Use' }}
+                            </button>
+                          }
+                          @if (authService.isAdmin()) {
+                            <button
+                              class="btn-tbl-act admin-def"
+                              [class.active]="isSystemDefault(model)"
+                              (click)="setAsSystemDefault(model)"
+                              title="Set as Tavern System Default"
+                            >
+                              👑
+                            </button>
+                          }
+                        }
+                        <button
+                          class="btn-tbl-act inspect"
+                          (click)="displayModel(model, false)"
+                          title="Inspect pricing tiers, parameters & JSON"
+                        >
+                          👁️ Details
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        } @else {
         
         <div class="models-grid">
           @for (model of paginatedModels(); track model.id) {
@@ -272,6 +438,7 @@
             </div>
           }
         </div>
+        }
 
         <!-- Pagination Controls -->
         @if (totalPages() > 1) {

@@ -1,77 +1,106 @@
 <div class="app-layout">
-  <!-- Top Navigation Header -->
-  <header class="app-navbar">
-    <div class="nav-brand">
-      <span class="logo-emoji">🏰</span>
-      <div class="brand-text">
-        <h1 class="brand-title">kron-tavern</h1>
-        <span class="brand-subtitle">AI Companion & Roleplay Platform</span>
+  <!-- Top Navigation Header (Collapsible) -->
+  @if (!isNavbarCollapsed()) {
+    <header class="app-navbar">
+      <div class="nav-brand">
+        <span class="logo-emoji">🏰</span>
+        <div class="brand-text">
+          <h1 class="brand-title">kron-tavern</h1>
+          <span class="brand-subtitle">AI Companion & Roleplay Platform</span>
+        </div>
       </div>
-    </div>
 
-    <div class="nav-actions">
-      @if (activeSessionId()) {
-        <button class="nav-btn chat-active-btn" (click)="activeSessionId.set(activeSessionId())" title="Return to Active Chat Scene">
-          <span>💬 Current Scene</span>
+      <div class="nav-actions">
+        @if (activeSessionId()) {
+          <button class="nav-btn chat-active-btn" (click)="activeSessionId.set(activeSessionId())" title="Return to Active Chat Scene">
+            <span>💬 Current Scene</span>
+          </button>
+        }
+
+        @if (authService.isAuthenticated()) {
+          <button class="nav-btn primary" (click)="onRequestNewSession()" title="Start New Roleplay Session">
+            <span>⚔️ Start Chat</span>
+          </button>
+          <button class="nav-btn secondary" (click)="toggleSessions()" title="View & Manage Your Chat Sessions">
+            <span>📜 Sessions</span>
+          </button>
+        }
+
+        <button class="nav-btn secondary" (click)="toggleCharacters()" title="Browse & Create AI Companions">
+          <span>🎭 Characters</span>
         </button>
-      }
 
-      @if (authService.isAuthenticated()) {
-        <button class="nav-btn primary" (click)="onRequestNewSession()" title="Start New Roleplay Session">
-          <span>⚔️ Start Chat</span>
+        @if (authService.isAuthenticated()) {
+          <button class="nav-btn secondary" (click)="togglePersonas()" title="Manage Your Roleplay Personas">
+            <span>👤 Personas</span>
+          </button>
+        }
+
+        <button class="nav-btn secondary" (click)="toggleModels()" title="Browse Multimodal AI Models">
+          <span>🤖 Models</span>
         </button>
-      }
 
-      <button class="nav-btn secondary" (click)="toggleCharacters()" title="Browse & Create AI Companions">
-        <span>🎭 Characters</span>
-      </button>
+        <a href="/api/docs" target="_blank" class="nav-btn secondary hide-mobile" title="Open Swagger API Documentation">
+          <span>📚 Swagger</span>
+        </a>
 
-      @if (authService.isAuthenticated()) {
-        <button class="nav-btn secondary" (click)="togglePersonas()" title="Manage Your Roleplay Personas">
-          <span>👤 Personas</span>
+        <!-- Admin Button (Only shown if user is admin) -->
+        @if (authService.isAdmin()) {
+          <button class="nav-btn secondary" (click)="toggleAdmin()" title="Open Database & System Admin">
+            <span>⚙️ DB & Admin</span>
+          </button>
+        }
+
+        <!-- User Authentication / Profile Pill -->
+        @if (authService.isAuthenticated()) {
+          <button class="nav-btn user-pill" (click)="toggleAuth()" title="User Profile & API Keys">
+            <span class="avatar-dot">👤</span>
+            <span class="user-name">{{ authService.currentUser()?.username }}</span>
+            @if (authService.isAdmin()) {
+              <span class="admin-badge">👑 Admin</span>
+            }
+          </button>
+        } @else {
+          <button class="nav-btn auth-cta" (click)="toggleAuth()" title="Sign In or Create Account">
+            <span>🔐 Sign In / Register</span>
+          </button>
+        }
+
+        <button
+          class="nav-btn collapse-nav-btn"
+          (click)="setNavbarCollapsed(true)"
+          title="Collapse Top Navigation Bar"
+          aria-label="Collapse Top Navigation Bar"
+        >
+          <span>▴</span>
         </button>
-      }
-
-      <button class="nav-btn secondary" (click)="toggleModels()" title="Browse Multimodal AI Models">
-        <span>🤖 Models</span>
-      </button>
-
-      <a href="/api/docs" target="_blank" class="nav-btn secondary" title="Open Swagger API Documentation">
-        <span>📚 Swagger</span>
-      </a>
-
-      <!-- Admin Button (Only shown if user is admin) -->
-      @if (authService.isAdmin()) {
-        <button class="nav-btn secondary" (click)="toggleAdmin()" title="Open Database & System Admin">
-          <span>⚙️ DB & Admin</span>
-        </button>
-      }
-
-      <!-- User Authentication / Profile Pill -->
-      @if (authService.isAuthenticated()) {
-        <button class="nav-btn user-pill" (click)="toggleAuth()" title="User Profile & API Keys">
-          <span class="avatar-dot">👤</span>
-          <span class="user-name">{{ authService.currentUser()?.username }}</span>
-          @if (authService.isAdmin()) {
-            <span class="admin-badge">👑 Admin</span>
-          }
-        </button>
-      } @else {
-        <button class="nav-btn auth-cta" (click)="toggleAuth()" title="Sign In or Create Account">
-          <span>🔐 Sign In / Register</span>
-        </button>
-      }
-    </div>
-  </header>
+      </div>
+    </header>
+  } @else if (!activeSessionId()) {
+    <!-- Small floating restore pill when on home screen with navbar collapsed -->
+    <button
+      class="floating-navbar-restore-btn"
+      (click)="setNavbarCollapsed(false)"
+      title="Show Top Navigation Toolbar"
+      aria-label="Show Top Navigation Toolbar"
+    >
+      <span>🏰</span>
+      <span class="restore-arrow">▾</span>
+    </button>
+  }
 
   <!-- Main Chat / Stage Container -->
   <main class="app-main" [class.has-stage]="!!activeSessionId()">
     @if (activeSessionId(); as sid) {
       <app-chat-stage
         [sessionId]="sid"
+        [isAppNavbarCollapsed]="isNavbarCollapsed()"
+        (toggleAppNavbar)="toggleNavbar()"
+        (setAppNavbarCollapsed)="setNavbarCollapsed($event)"
         (close)="onCloseStage()"
         (switchSession)="onSwitchSession($event)"
         (startNewSessionRequest)="onRequestNewSession()"
+        (openSessionsModal)="showSessions.set(true)"
       />
     } @else {
       <div class="stage-placeholder">
@@ -124,6 +153,9 @@
               <button class="btn-cta primary" (click)="onRequestNewSession()">
                 ⚔️ Start Roleplay Session
               </button>
+              <button class="btn-cta secondary" (click)="toggleSessions()">
+                📜 My Sessions
+              </button>
             } @else {
               <button class="btn-cta primary" (click)="toggleAuth()">
                 🔐 Sign In to Start Playing
@@ -157,6 +189,17 @@
   <!-- Personas Modal -->
   @if (showPersonas()) {
     <app-personas (close)="showPersonas.set(false)" />
+  }
+
+  <!-- Sessions Modal -->
+  @if (showSessions()) {
+    <app-sessions-modal
+      [currentSessionId]="activeSessionId()"
+      (close)="showSessions.set(false)"
+      (openSession)="onOpenSession($event)"
+      (startNewSession)="onRequestNewSession()"
+      (sessionDeleted)="onSessionDeleted($event)"
+    />
   }
 
   <!-- Session Setup Modal -->

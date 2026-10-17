@@ -1,0 +1,270 @@
+<div class="model-picker-container">
+  <!-- 1. Compact Summary Tabs for the 3 AI Types (Text/Chat, Text-to-Image, Image-to-Image) -->
+  <div class="role-summary-tabs">
+    <!-- Chat / Text Tab -->
+    <button
+      type="button"
+      class="role-tab"
+      [class.active]="activeRole() === 'chat'"
+      (click)="setRole('chat')"
+    >
+      <div class="tab-top">
+        <span class="role-label">💬 Text / Chat LLM</span>
+        @if (selectedChatSummary(); as sChat) {
+          <span class="cost-pill" [class]="getPricingClass(sChat.pricing)">
+            {{ sChat.pricing.headlineBadge }}
+          </span>
+        } @else if (allowInheritDefault() && !chatModel()) {
+          <span class="cost-pill cost-inherit">🌟 Default</span>
+        }
+      </div>
+      <div class="tab-model-name" [title]="chatModel() || systemChatTitle()">
+        @if (selectedChatSummary(); as sChat) {
+          <strong>{{ sChat.title }}</strong>
+          <span class="slug-sub">{{ sChat.slugowner }}</span>
+        } @else if (!chatModel() && allowInheritDefault()) {
+          <span>Inherit: {{ systemChatTitle() }}</span>
+        } @else {
+          <span>{{ chatModel() }}</span>
+        }
+      </div>
+    </button>
+
+    <!-- Text-to-Image Tab -->
+    <button
+      type="button"
+      class="role-tab"
+      [class.active]="activeRole() === 'text-to-image'"
+      (click)="setRole('text-to-image')"
+    >
+      <div class="tab-top">
+        <span class="role-label">🎨 Text-to-Image (Avatar)</span>
+        @if (selectedT2ISummary(); as sT2I) {
+          <span class="cost-pill" [class]="getPricingClass(sT2I.pricing)">
+            {{ sT2I.pricing.headlineBadge }}
+          </span>
+        } @else if (allowInheritDefault() && !textToImageModel()) {
+          <span class="cost-pill cost-inherit">🌟 Default</span>
+        }
+      </div>
+      <div class="tab-model-name" [title]="textToImageModel() || systemT2ITitle()">
+        @if (selectedT2ISummary(); as sT2I) {
+          <strong>{{ sT2I.title }}</strong>
+          <span class="slug-sub">{{ sT2I.slugowner }}</span>
+        } @else if (!textToImageModel() && allowInheritDefault()) {
+          <span>Inherit: {{ systemT2ITitle() }}</span>
+        } @else {
+          <span>{{ textToImageModel() }}</span>
+        }
+      </div>
+    </button>
+
+    <!-- Image-to-Image Tab -->
+    <button
+      type="button"
+      class="role-tab"
+      [class.active]="activeRole() === 'image-to-image'"
+      (click)="setRole('image-to-image')"
+    >
+      <div class="tab-top">
+        <span class="role-label">🖼️ Image-to-Image (Scene)</span>
+        @if (selectedI2ISummary(); as sI2I) {
+          <span class="cost-pill" [class]="getPricingClass(sI2I.pricing)">
+            {{ sI2I.pricing.headlineBadge }}
+          </span>
+        } @else if (allowInheritDefault() && !imageToImageModel()) {
+          <span class="cost-pill cost-inherit">🌟 Default</span>
+        }
+      </div>
+      <div class="tab-model-name" [title]="imageToImageModel() || systemI2ITitle()">
+        @if (selectedI2ISummary(); as sI2I) {
+          <strong>{{ sI2I.title }}</strong>
+          <span class="slug-sub">{{ sI2I.slugowner }}</span>
+        } @else if (!imageToImageModel() && allowInheritDefault()) {
+          <span>Inherit: {{ systemI2ITitle() }}</span>
+        } @else {
+          <span>{{ imageToImageModel() }}</span>
+        }
+      </div>
+    </button>
+  </div>
+
+  <!-- 2. Local llama.cpp Workstation Quick Bar (Shown on Chat / Text Tab) -->
+  @if (activeRole() === 'chat') {
+    <div class="local-llm-bar">
+      <div class="local-bar-main">
+        <div class="local-status-info">
+          <span class="status-dot" [class.online]="localStatus()?.online"></span>
+          <span class="local-label">🖥️ Local llama.cpp:</span>
+          <code>{{ localStatus()?.config?.modelsUrl || 'http://localhost:8080/models' }}</code>
+          @if (localStatus()?.online && localStatus()?.models?.length) {
+            <span class="local-badge online">
+              {{ localStatus()!.models.length }} model{{ localStatus()!.models.length > 1 ? 's' : '' }} active
+            </span>
+          } @else {
+            <span class="local-badge offline">
+              {{ localStatus()?.config?.enabled === false ? 'Disabled' : 'Offline' }}
+            </span>
+          }
+        </div>
+
+        <div class="local-actions">
+          @if (localStatus()?.online && localStatus()?.models?.length) {
+            @for (lm of localStatus()!.models; track lm.id) {
+              <button
+                type="button"
+                class="btn-use-local"
+                [class.selected]="isModelSelected(lm)"
+                (click)="selectLocalModel(lm)"
+                [title]="'Use local workstation model: ' + lm.slugproject"
+              >
+                {{ isModelSelected(lm) ? '✔ Active Local LLM' : '⚡ Use ' + lm.title }}
+              </button>
+            }
+          }
+          <button
+            type="button"
+            class="btn-local-icon"
+            (click)="loadLocalStatus(true)"
+            [disabled]="syncingLocal()"
+            title="Refresh models from local llama.cpp server"
+          >
+            {{ syncingLocal() ? '⏳' : '🔄' }}
+          </button>
+          <button
+            type="button"
+            class="btn-local-icon"
+            (click)="showLocalConfig.set(!showLocalConfig())"
+            title="Configure local llama.cpp endpoint URL"
+          >
+            ⚙️
+          </button>
+        </div>
+      </div>
+
+      @if (showLocalConfig()) {
+        <div class="local-config-drawer">
+          <label class="chk-enable">
+            <input type="checkbox" [(ngModel)]="localEnabledInput" />
+            <span>Enable Local llama.cpp</span>
+          </label>
+          <input
+            type="text"
+            [(ngModel)]="localUrlInput"
+            class="local-url-input"
+            placeholder="http://localhost:8080/models"
+          />
+          <button
+            type="button"
+            class="btn-save-local"
+            (click)="saveLocalConfig()"
+            [disabled]="syncingLocal()"
+          >
+            Save & Sync
+          </button>
+        </div>
+      }
+    </div>
+  }
+
+  <!-- 3. Search & Filter Strip -->
+  <div class="picker-toolbar">
+    <div class="picker-search">
+      <span class="search-icon">🔍</span>
+      <input
+        type="text"
+        [(ngModel)]="searchQuery"
+        [placeholder]="'Filter ' + currentRoleModels().length + ' ' + activeRole() + ' models by name, provider, or cost ($)...'"
+      />
+      @if (searchQuery()) {
+        <button type="button" class="btn-clear" (click)="searchQuery.set('')">✕</button>
+      }
+    </div>
+    <span class="count-meta">{{ currentRoleModels().length }} models</span>
+  </div>
+
+  <!-- 4. High-Density Compact Tabular Model Selector -->
+  <div class="compact-table-viewport">
+    <table class="compact-models-table">
+      <thead>
+        <tr>
+          <th class="col-sel"></th>
+          <th class="col-name">Model</th>
+          <th class="col-provider">Provider</th>
+          <th class="col-cost">Cost / Billing Summary</th>
+          <th class="col-method">Billing Basis</th>
+          <th class="col-time">Speed</th>
+        </tr>
+      </thead>
+      <tbody>
+        @if (allowInheritDefault()) {
+          <tr
+            class="model-row inherit-row"
+            [class.selected]="!getActiveSelectionValue()"
+            (click)="selectModel('')"
+          >
+            <td class="col-sel">
+              <span class="radio-dot" [class.checked]="!getActiveSelectionValue()"></span>
+            </td>
+            <td class="col-name">
+              <strong>🌟 Default (Inherit Tavern Admin Setting)</strong>
+            </td>
+            <td class="col-provider">
+              <span class="provider-tag">system</span>
+            </td>
+            <td class="col-cost">
+              <span class="cost-badge cost-inherit">Inherited Default</span>
+            </td>
+            <td class="col-method">
+              <span class="method-sub">
+                {{ activeRole() === 'chat' ? systemChatTitle() : (activeRole() === 'text-to-image' ? systemT2ITitle() : systemI2ITitle()) }}
+              </span>
+            </td>
+            <td class="col-time">—</td>
+          </tr>
+        }
+
+        @for (m of currentRoleModels(); track m.id) {
+          <tr
+            class="model-row"
+            [class.selected]="isModelSelected(m)"
+            [class.local-row]="m.isLocal"
+            (click)="selectModel(m.slug)"
+          >
+            <td class="col-sel">
+              <span class="radio-dot" [class.checked]="isModelSelected(m)"></span>
+            </td>
+            <td class="col-name">
+              <div class="name-cell">
+                <span class="m-title" [title]="m.title + ' (' + m.slug + ')'">{{ m.title }}</span>
+                @if (m.isLocal) {
+                  <span class="tag-local">LOCAL</span>
+                }
+              </div>
+            </td>
+            <td class="col-provider">
+              <span class="provider-tag" [class.local-prov]="m.isLocal">{{ m.slugowner }}</span>
+            </td>
+            <td class="col-cost">
+              <span
+                class="cost-badge"
+                [class]="getPricingClass(m.pricing)"
+                [title]="m.pricing.tokenPricingNote || m.pricing.primaryMethodExplanation"
+              >
+                {{ m.pricing.headlineBadge }}
+              </span>
+            </td>
+            <td class="col-method">
+              <span class="method-sub" [title]="m.pricing.subtext">
+                {{ m.pricing.subtext }}
+              </span>
+            </td>
+            <td class="col-time">
+              <span class="time-sub">{{ m.computingtime || '—' }}</span>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+</div>

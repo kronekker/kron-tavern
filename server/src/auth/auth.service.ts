@@ -168,7 +168,12 @@ export class AuthService {
 
   setWiroKey(userId: string, apiKey: string): { success: boolean; message: string } {
     const db = this.dbService.getDb();
-    const encrypted = this.cryptoService.encrypt(apiKey.trim());
+    let sanitized = (apiKey || '').trim();
+    // 32-char alphanumeric keys for Wiro are lowercase; sanitize any accidental virtual keyboard capitalization
+    if (sanitized.length === 32 && /^[a-zA-Z0-9]{32}$/.test(sanitized)) {
+      sanitized = sanitized.toLowerCase();
+    }
+    const encrypted = this.cryptoService.encrypt(sanitized);
 
     db.prepare('UPDATE users SET wiro_key_encrypted = ?, openrouter_key_encrypted = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
       encrypted,
@@ -193,7 +198,11 @@ export class AuthService {
     if (!row) return null;
     const key = row.wiro_key_encrypted || row.openrouter_key_encrypted;
     if (!key) return null;
-    return this.cryptoService.decrypt(key);
+    let decrypted = this.cryptoService.decrypt(key).trim();
+    if (decrypted.length === 32 && /^[a-zA-Z0-9]{32}$/.test(decrypted)) {
+      decrypted = decrypted.toLowerCase();
+    }
+    return decrypted;
   }
 
   setOpenRouterKey(userId: string, apiKey: string) {

@@ -81,45 +81,30 @@
         />
       </div>
 
-      <!-- 4. Multimodal Model Configuration (Collapsible) -->
+      <!-- 4. Multimodal Model Configuration (Collapsible Tabular Picker) -->
       <div class="models-section">
         <button
           type="button"
           class="models-toggle-btn"
           (click)="showAdvancedModels.set(!showAdvancedModels())"
         >
-          <span>🤖 Multimodal AI Models Triad</span>
-          <span class="toggle-arrow">{{ showAdvancedModels() ? '▲ Hide' : '▼ Customize' }}</span>
+          <span>🤖 Multimodal AI Models Triad (Chat / Local LLM, Avatar T2I, Scene I2I)</span>
+          <span class="toggle-arrow">{{ showAdvancedModels() ? '▲ Hide Table' : '▼ Customize Models' }}</span>
         </button>
 
         @if (showAdvancedModels()) {
           <div class="models-dropdowns">
-            <div class="model-field">
-              <label>💬 Chat Dialogue Model</label>
-              <select [(ngModel)]="chatModel" class="modal-select">
-                @for (m of chatModelsList(); track m.slug) {
-                  <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
-                }
-              </select>
-            </div>
-
-            <div class="model-field">
-              <label>🎨 Avatar Generation (Text-to-Image)</label>
-              <select [(ngModel)]="textToImageModel" class="modal-select">
-                @for (m of textToImageModelsList(); track m.slug) {
-                  <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
-                }
-              </select>
-            </div>
-
-            <div class="model-field">
-              <label>🖼️ Scene & Expression (Image-to-Image)</label>
-              <select [(ngModel)]="imageToImageModel" class="modal-select">
-                @for (m of imageToImageModelsList(); track m.slug) {
-                  <option [value]="m.slug">{{ m.title }} ({{ m.slug }})</option>
-                }
-              </select>
-            </div>
+            <app-model-picker-table
+              [chatModels]="chatModelsList()"
+              [textToImageModels]="textToImageModelsList()"
+              [imageToImageModels]="imageToImageModelsList()"
+              [chatModel]="chatModel()"
+              [textToImageModel]="textToImageModel()"
+              [imageToImageModel]="imageToImageModel()"
+              (chatModelChange)="chatModel.set($event)"
+              (textToImageModelChange)="textToImageModel.set($event)"
+              (imageToImageModelChange)="imageToImageModel.set($event)"
+            />
           </div>
         }
       </div>

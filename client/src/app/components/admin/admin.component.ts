@@ -15,11 +15,12 @@ import {
   ResolvedActiveModels,
 } from '../../services/models.service';
 import { AuthService } from '../../services/auth.service';
+import { ModelPickerTableComponent } from '../model-picker-table/model-picker-table.component';
 
 @Component({
   selector: 'app-admin',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModelPickerTableComponent],
   templateUrl: './admin.component.html',
   styleUrls: ['./admin.component.scss'],
 })
