@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS characters (
   creator_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   avatar_url TEXT,
+  avatar_prompt TEXT,
   tagline TEXT,
   greeting TEXT NOT NULL,
   system_prompt TEXT NOT NULL,
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   chat_model TEXT,
   text_to_image_model TEXT,
   image_to_image_model TEXT,
+  background_image_url TEXT,
   active_compression_id TEXT REFERENCES session_compressions(id) ON DELETE SET NULL,
   context_strategy TEXT DEFAULT 'episodic_sliding', -- 'episodic_sliding', 'rolling_summary', 'selective_pruning', 'fifo'
   context_threshold_percent INTEGER DEFAULT 75,
@@ -161,6 +163,26 @@ CREATE TABLE IF NOT EXISTS turn_traces (
   triggered_keywords_json TEXT DEFAULT '[]',
   recalled_memories_json TEXT DEFAULT '[]',
   compression_event_json TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+
+-- Persistent Generated & Reference Images Store (T2I, I2I, Character Avatars)
+CREATE TABLE IF NOT EXISTS generated_images (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  character_id TEXT REFERENCES characters(id) ON DELETE SET NULL,
+  mode TEXT NOT NULL DEFAULT 'text-to-image',
+  prompt TEXT NOT NULL,
+  model_used TEXT NOT NULL,
+  file_path TEXT NOT NULL,
+  image_url TEXT NOT NULL,
+  reference_image_url TEXT,
+  aspect_ratio TEXT,
+  width INTEGER,
+  height INTEGER,
+  file_size_bytes INTEGER,
+  latency_ms INTEGER,
+  raw_response_json TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 

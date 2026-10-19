@@ -18,6 +18,7 @@ export interface SessionItem {
   chat_model: string;
   text_to_image_model: string;
   image_to_image_model: string;
+  background_image_url?: string | null;
   active_compression_id?: string | null;
   context_threshold_percent: number;
   rolling_summary?: string | null;
@@ -216,6 +217,7 @@ export class SessionsService {
       chat_model: chatModel,
       text_to_image_model: textToImageModel,
       image_to_image_model: imageToImageModel,
+      background_image_url: null,
       context_threshold_percent: 75,
       last_message: char.greeting,
       message_count: 1,
@@ -262,6 +264,7 @@ export class SessionsService {
       chat_model: r.chat_model || 'openai/gpt-6.1-sol',
       text_to_image_model: r.text_to_image_model || 'google/nano banana 2.1 advanced',
       image_to_image_model: r.image_to_image_model || 'wiro-partners/qwen image edit uncensored',
+      background_image_url: r.background_image_url || null,
       active_compression_id: r.active_compression_id,
       context_threshold_percent: r.context_threshold_percent ?? 75,
       rolling_summary: r.rolling_summary,
@@ -380,6 +383,7 @@ export class SessionsService {
         chat_model: session.chat_model || 'openai/gpt-6.1-sol',
         text_to_image_model: session.text_to_image_model || 'google/nano banana 2.1 advanced',
         image_to_image_model: session.image_to_image_model || 'wiro-partners/qwen image edit uncensored',
+        background_image_url: session.background_image_url || null,
         active_compression_id: session.active_compression_id,
         context_threshold_percent: session.context_threshold_percent ?? 75,
         rolling_summary: session.rolling_summary,
@@ -428,6 +432,32 @@ export class SessionsService {
     `,
       )
       .run(chatModel, textToImageModel, imageToImageModel, now, sessionId);
+
+    return this.getSessionDetails(sessionId, userId).session;
+  }
+
+  updateSessionBackground(
+    sessionId: string,
+    userId: string,
+    backgroundImageUrl: string | null,
+  ): SessionItem {
+    const session = this.db.prepare('SELECT id FROM sessions WHERE id = ? AND user_id = ?').get(sessionId, userId) as any;
+    if (!session) {
+      throw new NotFoundException(`Session '${sessionId}' not found.`);
+    }
+
+    const cleanUrl = backgroundImageUrl ? backgroundImageUrl.trim() : null;
+    const now = new Date().toISOString();
+
+    this.db
+      .prepare(
+        `
+      UPDATE sessions
+      SET background_image_url = ?, updated_at = ?
+      WHERE id = ?
+    `,
+      )
+      .run(cleanUrl || null, now, sessionId);
 
     return this.getSessionDetails(sessionId, userId).session;
   }

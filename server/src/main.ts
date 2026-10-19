@@ -1,9 +1,14 @@
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { json, urlencoded } from 'express';
 import { AppModule } from './app.module.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+
+  // Increase payload limit for base64 reference image uploads (I2I)
+  app.use(json({ limit: '25mb' }));
+  app.use(urlencoded({ limit: '25mb', extended: true }));
 
   // Set global API route prefix
   app.setGlobalPrefix('api');
@@ -24,6 +29,7 @@ async function bootstrap() {
     .setVersion('1.0.0')
     .addTag('auth', 'Authentication and user API key management')
     .addTag('characters', 'Character and persona management')
+    .addTag('images', 'Text-to-Image, Image-to-Image, and persistent image gallery')
     .addTag('chat', 'Roleplay sessions, SSE streaming, and A/B evaluations')
     .addTag('memory', 'Keyword lorebooks and semantic episodic memory')
     .addTag('traces', 'Turn Inspector audit traces')

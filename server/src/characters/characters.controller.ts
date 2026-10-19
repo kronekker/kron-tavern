@@ -73,6 +73,20 @@ export class CharactersController {
     return this.charactersService.delete(id, req.user.userId, req.user.isAdmin);
   }
 
+  @Post(':id/generate-avatar')
+  @UseGuards(AuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Generate a character avatar from a visual description using Text-to-Image and save to character',
+  })
+  async generateAvatar(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() dto: { prompt: string; model?: string; aspectRatio?: string },
+  ) {
+    return this.charactersService.generateAvatar(id, req.user.userId, dto, req.user.isAdmin);
+  }
+
   @Get(':id/snippets')
   @UseGuards(OptionalAuthGuard)
   @ApiOperation({ summary: 'Get keyword lore snippets for a character' })

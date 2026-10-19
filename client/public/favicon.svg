@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a" />
+      <stop offset="100%" stop-color="#1e293b" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8" />
+      <stop offset="100%" stop-color="#818cf8" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#fde047" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded Shield / Badge Base -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bgGrad)" stroke="url(#accentGrad)" stroke-width="3" />
+
+  <!-- Castle / Tavern Battlements Silhouette -->
+  <!-- Left Tower -->
+  <path d="M12 22 h4 v4 h3 v-4 h4 v28 h-11 z" fill="url(#accentGrad)" />
+  <!-- Right Tower -->
+  <path d="M41 22 h4 v4 h3 v-4 h4 v28 h-11 z" fill="url(#accentGrad)" />
+  <!-- Center Keep -->
+  <path d="M21 16 h4 v5 h4 v-5 h6 v5 h4 v-5 h4 v34 h-22 z" fill="url(#accentGrad)" />
+
+  <!-- Warm Glowing Tavern Archway / Door -->
+  <path d="M26 50 v-11 a6 6 0 0 1 12 0 v11 z" fill="url(#goldGrad)" />
+
+  <!-- Upper Keep Window Glow -->
+  <rect x="30" y="25" width="4" height="6" rx="2" fill="#fde047" />
+
+  <!-- Base Ground Line -->
+  <rect x="9" y="49" width="46" height="4" rx="2" fill="#38bdf8" />
+</svg>

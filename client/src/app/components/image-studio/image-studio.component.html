@@ -1,0 +1,437 @@
+<div class="studio-backdrop" (click)="close.emit()">
+  <div class="studio-modal" (click)="$event.stopPropagation()">
+
+    <!-- Modal Header -->
+    <header class="studio-header">
+      <div class="header-left">
+        <div class="header-icon">🎨</div>
+        <div>
+          <h2>AI Image Studio & Persistent Store</h2>
+          <span class="sub-text">
+            Standalone Text-to-Image & Image-to-Image workbench • All generated images are preserved in <code>data/images/</code>
+          </span>
+        </div>
+      </div>
+
+      <div class="header-actions">
+        <div class="mode-tabs">
+          <button
+            type="button"
+            class="mode-tab"
+            [class.active]="activeMode() === 'text-to-image'"
+            (click)="switchMode('text-to-image')">
+            🎨 Text-to-Image
+          </button>
+          <button
+            type="button"
+            class="mode-tab"
+            [class.active]="activeMode() === 'image-to-image'"
+            (click)="switchMode('image-to-image')">
+            🖼️ Image-to-Image
+          </button>
+        </div>
+
+        <button class="btn-close" (click)="close.emit()" title="Close Studio">✕</button>
+      </div>
+    </header>
+
+    <!-- Notification Banner -->
+    @if (notification(); as notif) {
+      <div class="notif-banner" [class]="notif.type">
+        <span>{{ notif.message }}</span>
+        <button class="btn-dismiss" (click)="notification.set(null)">✕</button>
+      </div>
+    }
+
+    <!-- Studio Main Split Workspace -->
+    <div class="studio-body">
+
+      <!-- LEFT COLUMN: Generation Controls (T2I & I2I) -->
+      <section class="studio-controls-pane">
+        <div class="pane-card">
+          <div class="pane-card-header">
+            <h3>
+              @if (activeMode() === 'text-to-image') {
+                🎨 Text-to-Image Generator
+              } @else {
+                🖼️ Image-to-Image Transformation
+              }
+            </h3>
+            <span class="mode-badge">{{ activeMode() }}</span>
+          </div>
+
+          <!-- Model Selector Summary Row -->
+          <div class="control-group">
+            <label>Active {{ activeMode() === 'text-to-image' ? 'Text-to-Image' : 'Image-to-Image' }} Model</label>
+            <div
+              class="model-selector-trigger"
+              (click)="showModelPicker.set(!showModelPicker())"
+              title="Click to browse and compare models with Wiro pricing">
+              <div class="model-trigger-left">
+                <span class="model-owner">{{ resolvedCurrentModel()?.slugowner || 'wiro' }}</span>
+                <span class="model-title">{{ resolvedCurrentModel()?.title || currentSelectedModelSlug() || 'Select Model' }}</span>
+              </div>
+              <div class="model-trigger-right">
+                @if (resolvedCurrentModel()?.pricing?.headlineBadge; as badge) {
+                  <span class="cost-pill">{{ badge }}</span>
+                }
+                <span class="caret">{{ showModelPicker() ? '▲' : '▼' }}</span>
+              </div>
+            </div>
+
+            @if (showModelPicker()) {
+              <div class="inline-model-picker">
+                <app-model-picker-table
+                  [initialRole]="activeMode()"
+                  [textToImageModels]="t2iModels()"
+                  [imageToImageModels]="i2iModels()"
+                  [textToImageModel]="selectedT2IModel()"
+                  [imageToImageModel]="selectedI2IModel()"
+                  (textToImageModelChange)="onSelectModel($event)"
+                  (imageToImageModelChange)="onSelectModel($event)">
+                </app-model-picker-table>
+              </div>
+            }
+          </div>
+
+          <!-- Reference Image Section (Only in Image-to-Image Mode) -->
+          @if (activeMode() === 'image-to-image') {
+            <div class="control-group reference-upload-group">
+              <div class="label-row">
+                <label>Reference Image <span class="req">*</span></label>
+                <div class="ref-actions">
+                  <button
+                    type="button"
+                    class="btn-ref-helper"
+                    [class.active]="showReferenceGalleryPicker()"
+                    (click)="showReferenceGalleryPicker.set(!showReferenceGalleryPicker())">
+                    🗂️ Pick from Server Store
+                  </button>
+                  @if (referenceImageBase64() || referenceImageUrl()) {
+                    <button type="button" class="btn-ref-clear" (click)="clearReferenceImage()">
+                      ✕ Clear
+                    </button>
+                  }
+                </div>
+              </div>
+
+              @if (referenceImageBase64() || referenceImageUrl()) {
+                <div class="reference-preview-card">
+                  <img
+                    [src]="referenceImageBase64() || referenceImageUrl()"
+                    alt="Reference input"
+                  />
+                  <div class="ref-meta">
+                    <strong>{{ referenceImageName() || 'External / Stored Image' }}</strong>
+                    <span>Ready for Image-to-Image transformation</span>
+                  </div>
+                </div>
+              } @else {
+                <label
+                  class="dropzone-box"
+                  (dragover)="$event.preventDefault()"
+                  (drop)="onFileDropped($event)">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    (change)="onFileSelected($event)"
+                    hidden
+                  />
+                  <span class="drop-icon">📤</span>
+                  <strong>Drop a reference image here or click to browse</strong>
+                  <span class="drop-sub">Supports PNG, JPEG, WebP (automatically saved to server store)</span>
+                </label>
+              }
+
+              @if (showReferenceGalleryPicker()) {
+                <div class="ref-gallery-drawer">
+                  <span class="drawer-caption">Select a stored image as your reference input:</span>
+                  @if (images().length === 0) {
+                    <div class="drawer-empty">No stored images yet.</div>
+                  } @else {
+                    <div class="ref-thumbs-row">
+                      @for (img of images(); track img.id) {
+                        <div
+                          class="ref-thumb"
+                          [class.selected]="referenceImageUrl() === img.image_url"
+                          (click)="useStoredImageAsReference(img)"
+                          [title]="img.prompt">
+                          <img [src]="img.image_url" [alt]="img.prompt" loading="lazy" />
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Prompt / Description Input -->
+          <div class="control-group">
+            <label>
+              {{ activeMode() === 'text-to-image' ? 'Image Prompt / Visual Description' : 'Transformation / Edit Description' }}
+              <span class="req">*</span>
+            </label>
+            <textarea
+              rows="4"
+              [(ngModel)]="promptText"
+              [placeholder]="
+                activeMode() === 'text-to-image'
+                  ? 'Describe the scene, character, lighting, and artistic style in detail...'
+                  : 'Describe how to transform or edit the reference image (e.g. Change outfit to silver armor, add dramatic sunset lighting)...'
+              "
+            ></textarea>
+          </div>
+
+          <!-- Aspect Ratio & Optional Seed -->
+          <div class="params-grid">
+            <div class="control-group">
+              <label>Aspect Ratio</label>
+              <select [(ngModel)]="aspectRatio">
+                @for (opt of modelRatioOptions(); track opt.value) {
+                  <option [value]="opt.value">{{ opt.text }}</option>
+                }
+              </select>
+            </div>
+
+            <div class="control-group">
+              <label>Seed (Optional)</label>
+              <input
+                type="text"
+                [(ngModel)]="seedInput"
+                placeholder="Random (or enter integer)"
+              />
+            </div>
+          </div>
+
+          <!-- Dynamic Model-Specific Parameters (e.g. resolution, promptExtend, size, outputFormat) -->
+          @if (modelExtraSchemaParams().length > 0) {
+            <div class="params-grid">
+              @for (param of modelExtraSchemaParams(); track param.id) {
+                <div class="control-group" [title]="param.note || param.label || param.id">
+                  <label>
+                    {{ param.label || param.id }}
+                    @if (param.required) {
+                      <span class="req">*</span>
+                    }
+                  </label>
+                  @if (param.options && param.options.length > 0) {
+                    <select
+                      [ngModel]="extraParamValues()[param.id] || ''"
+                      (ngModelChange)="updateExtraParam(param.id, $event)">
+                      @for (opt of param.options; track opt.value) {
+                        <option [value]="opt.value">{{ opt.text || opt.value }}</option>
+                      }
+                    </select>
+                  } @else {
+                    <input
+                      type="text"
+                      [ngModel]="extraParamValues()[param.id] || ''"
+                      (ngModelChange)="updateExtraParam(param.id, $event)"
+                      [placeholder]="param.placeholder || param.id"
+                    />
+                  }
+                </div>
+              }
+            </div>
+          }
+
+          <!-- Generate CTA Button -->
+          <button
+            type="button"
+            class="btn-run-generation"
+            [disabled]="generating() || !promptText().trim()"
+            (click)="runGeneration()">
+            @if (generating()) {
+              <span class="spinner-inline"></span>
+              <span>Generating via Wiro.ai ({{ elapsedSeconds() }}s)...</span>
+            } @else {
+              <span>
+                ✨ {{ activeMode() === 'text-to-image' ? 'Generate Image (T2I)' : 'Generate Image Variation (I2I)' }}
+              </span>
+            }
+          </button>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN: Inspector & Persistent Backend Image Store -->
+      <section class="studio-gallery-pane">
+
+        <!-- Active Image Inspector -->
+        @if (selectedImage(); as activeImg) {
+          <div class="inspector-card">
+            <div class="inspector-visual-area">
+              @if (activeImg.reference_image_url) {
+                <div class="i2i-comparison">
+                  <div class="comp-box">
+                    <span class="comp-tag">Reference Input</span>
+                    <img [src]="activeImg.reference_image_url" alt="Reference" />
+                  </div>
+                  <div class="comp-arrow">➔</div>
+                  <div class="comp-box output-box">
+                    <span class="comp-tag output-tag">Generated Output</span>
+                    <img [src]="activeImg.image_url" [alt]="activeImg.prompt" />
+                  </div>
+                </div>
+              } @else {
+                <div class="single-output-preview">
+                  <img [src]="activeImg.image_url" [alt]="activeImg.prompt" />
+                </div>
+              }
+            </div>
+
+            <div class="inspector-details">
+              <div class="inspector-top-row">
+                <div class="badges">
+                  <span class="badge mode" [class]="activeImg.mode">{{ activeImg.mode }}</span>
+                  <span class="badge model">🤖 {{ activeImg.model_used }}</span>
+                  @if (activeImg.width && activeImg.height) {
+                    <span class="badge dim">📐 {{ activeImg.width }}×{{ activeImg.height }}</span>
+                  }
+                  <span class="badge size">💾 {{ formatBytes(activeImg.file_size_bytes) }}</span>
+                  @if (activeImg.latency_ms) {
+                    <span class="badge latency">⚡ {{ (activeImg.latency_ms / 1000).toFixed(1) }}s</span>
+                  }
+                </div>
+
+                <div class="inspector-actions">
+                  <button
+                    type="button"
+                    class="btn-insp-action use-ref"
+                    (click)="useStoredImageAsReference(activeImg)"
+                    title="Use this image as the reference input for Image-to-Image">
+                    🖼️ Use as I2I Reference
+                  </button>
+                  <button
+                    type="button"
+                    class="btn-insp-action copy"
+                    (click)="copyImageUrl(activeImg.image_url)"
+                    title="Copy local server URL">
+                    📋 Copy URL
+                  </button>
+                  <a
+                    class="btn-insp-action open"
+                    [href]="activeImg.image_url"
+                    target="_blank"
+                    rel="noopener"
+                    title="Open raw image in new tab">
+                    ↗ Open
+                  </a>
+                  <button
+                    type="button"
+                    class="btn-insp-action delete"
+                    (click)="deleteImage(activeImg)"
+                    title="Delete from server disk & DB">
+                    🗑️ Delete
+                  </button>
+                </div>
+              </div>
+
+              <p class="inspector-prompt">
+                <strong>Prompt:</strong> {{ activeImg.prompt }}
+              </p>
+
+              <div class="inspector-storage-bar">
+                <span><strong>Server Path:</strong> <code>{{ activeImg.file_path }}</code></span>
+                <span><strong>Created:</strong> {{ activeImg.created_at | date:'medium' }}</span>
+                @if (activeImg.raw_response_json) {
+                  <button
+                    type="button"
+                    class="btn-toggle-raw"
+                    (click)="showRawDebugJson.set(!showRawDebugJson())">
+                    {{ showRawDebugJson() ? '▼ Hide Wiro Debug JSON' : '▶ View Wiro Debug JSON' }}
+                  </button>
+                }
+              </div>
+
+              @if (showRawDebugJson() && formattedRawJson()) {
+                <pre class="raw-json-box">{{ formattedRawJson() }}</pre>
+              }
+            </div>
+          </div>
+        }
+
+        <!-- Persistent Server Store Gallery -->
+        <div class="gallery-section">
+          <div class="gallery-header">
+            <div class="gallery-title">
+              <h3>🗂️ Server Image Store ({{ filteredGallery().length }})</h3>
+              <span class="store-hint">Stored persistently on backend disk — no download required</span>
+            </div>
+
+            <div class="gallery-filters">
+              <button
+                type="button"
+                class="filter-chip"
+                [class.active]="galleryFilter() === 'all'"
+                (click)="galleryFilter.set('all')">
+                All ({{ images().length }})
+              </button>
+              <button
+                type="button"
+                class="filter-chip"
+                [class.active]="galleryFilter() === 'text-to-image'"
+                (click)="galleryFilter.set('text-to-image')">
+                T2I
+              </button>
+              <button
+                type="button"
+                class="filter-chip"
+                [class.active]="galleryFilter() === 'image-to-image'"
+                (click)="galleryFilter.set('image-to-image')">
+                I2I
+              </button>
+              <button
+                type="button"
+                class="filter-chip"
+                [class.active]="galleryFilter() === 'avatar'"
+                (click)="galleryFilter.set('avatar')">
+                Avatars
+              </button>
+            </div>
+          </div>
+
+          @if (loadingGallery()) {
+            <div class="gallery-empty">Loading stored images...</div>
+          } @else if (filteredGallery().length === 0) {
+            <div class="gallery-empty">
+              No images stored in this category yet. Generate an image on the left to save it to the server store.
+            </div>
+          } @else {
+            <div class="gallery-grid">
+              @for (img of filteredGallery(); track img.id) {
+                <div
+                  class="gallery-item"
+                  [class.selected]="selectedImage()?.id === img.id"
+                  (click)="selectedImage.set(img)">
+                  <div class="thumb-wrap">
+                    <img [src]="img.image_url" [alt]="img.prompt" loading="lazy" />
+                    <span class="thumb-mode-badge" [class]="img.mode">
+                      {{ img.mode === 'image-to-image' ? 'I2I' : img.mode === 'avatar' ? 'Avatar' : 'T2I' }}
+                    </span>
+                    <button
+                      type="button"
+                      class="btn-thumb-delete"
+                      title="Delete image from server"
+                      (click)="deleteImage(img, $event)">
+                      🗑️
+                    </button>
+                  </div>
+                  <div class="thumb-caption">
+                    <span class="thumb-prompt">{{ img.prompt }}</span>
+                    <span class="thumb-meta">
+                      {{ img.width && img.height ? (img.width + '×' + img.height) : img.aspect_ratio }} • {{ formatBytes(img.file_size_bytes) }}
+                    </span>
+                  </div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+      </section>
+
+    </div>
+
+  </div>
+</div>

@@ -1,4 +1,13 @@
-<div class="chat-stage-container">
+<div class="chat-stage-container" [class.has-custom-bg]="!!activeBackgroundUrl()">
+  @if (activeBackgroundUrl(); as bgUrl) {
+    <div
+      class="session-bg-layer"
+      [style.background-image]="'url(' + bgUrl + ')'"
+      aria-hidden="true"
+    ></div>
+    <div class="session-bg-scrim" aria-hidden="true"></div>
+  }
+
   <!-- Top Stage Navbar (Collapsible) -->
   @if (!isStageHeaderCollapsed()) {
     <header class="stage-header">
@@ -46,6 +55,15 @@
           </button>
         }
 
+        <button
+          class="stage-nav-btn"
+          [class.active-bg-btn]="!!activeBackgroundUrl()"
+          (click)="openBackgroundModal()"
+          title="Change Session Background Image (Character Avatar or Image Store)"
+        >
+          <span>🖼️ <span class="btn-text-sm">Background</span></span>
+        </button>
+
         <button class="stage-nav-btn" (click)="openCompressModal()" title="Create Context Compression Boundary">
           <span>📦 <span class="btn-text-sm">Compress</span></span>
         </button>
@@ -90,6 +108,14 @@
           <span>💬</span>
         }
         <span class="restore-caret">▾</span>
+      </button>
+      <button
+        class="pill-icon-btn"
+        (click)="openBackgroundModal()"
+        title="Change Session Background Image"
+        aria-label="Change Session Background Image"
+      >
+        🖼️
       </button>
       <button
         class="pill-icon-btn"
@@ -657,6 +683,157 @@
             Save Models for Session
           </button>
           <button class="btn-sub secondary" (click)="showModelConfigModal.set(false)">Cancel</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Session Background Picker Modal -->
+  @if (showBackgroundModal()) {
+    <div class="modal-backdrop" (click)="showBackgroundModal.set(false)">
+      <div class="modal-card wide-modal bg-picker-modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h3>🖼️ Session Background</h3>
+            <span class="modal-sub">Choose your companion's avatar or any image from the server Image Store</span>
+          </div>
+          <button class="modal-close-btn" (click)="showBackgroundModal.set(false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Quick Presets: Default & Character Avatar -->
+          <div class="bg-preset-section">
+            <span class="section-label">Quick Presets</span>
+            <div class="bg-preset-grid">
+              <!-- Default Dark Theme -->
+              <button
+                type="button"
+                class="bg-option-card preset-default"
+                [class.selected]="!activeBackgroundUrl()"
+                [disabled]="isSavingBackground()"
+                (click)="selectBackgroundImage(null)"
+              >
+                <div class="bg-thumb dark-default-thumb">
+                  <span>🌌</span>
+                </div>
+                <div class="bg-option-meta">
+                  <strong>Default Tavern Dark</strong>
+                  <span>Clean radial gradient</span>
+                </div>
+                @if (!activeBackgroundUrl()) {
+                  <span class="active-check">✓ Active</span>
+                }
+              </button>
+
+              <!-- Character Avatar -->
+              @if (character(); as char) {
+                @if (char.avatar_url) {
+                  <button
+                    type="button"
+                    class="bg-option-card"
+                    [class.selected]="activeBackgroundUrl() === char.avatar_url"
+                    [disabled]="isSavingBackground()"
+                    (click)="selectBackgroundImage(char.avatar_url)"
+                  >
+                    <div class="bg-thumb">
+                      <img [src]="char.avatar_url" [alt]="char.name" />
+                    </div>
+                    <div class="bg-option-meta">
+                      <strong>{{ char.name }}'s Avatar</strong>
+                      <span>Character portrait</span>
+                    </div>
+                    @if (activeBackgroundUrl() === char.avatar_url) {
+                      <span class="active-check">✓ Active</span>
+                    }
+                  </button>
+                }
+              }
+            </div>
+          </div>
+
+          <!-- Server Image Store -->
+          <div class="bg-store-section">
+            <div class="store-section-header">
+              <span class="section-label">Server Image Store ({{ filteredStoreImages().length }})</span>
+              <div class="store-filter-pills">
+                <button
+                  type="button"
+                  class="filter-pill"
+                  [class.active]="backgroundFilter() === 'all'"
+                  (click)="backgroundFilter.set('all')"
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  [class.active]="backgroundFilter() === 'avatar'"
+                  (click)="backgroundFilter.set('avatar')"
+                >
+                  Avatars
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  [class.active]="backgroundFilter() === 'text-to-image'"
+                  (click)="backgroundFilter.set('text-to-image')"
+                >
+                  Text-to-Image
+                </button>
+                <button
+                  type="button"
+                  class="filter-pill"
+                  [class.active]="backgroundFilter() === 'image-to-image'"
+                  (click)="backgroundFilter.set('image-to-image')"
+                >
+                  Image-to-Image
+                </button>
+              </div>
+            </div>
+
+            @if (loadingStoreImages()) {
+              <div class="bg-store-empty">Loading images from server store...</div>
+            } @else if (filteredStoreImages().length === 0) {
+              <div class="bg-store-empty">
+                No stored images found in this category. Generate images in the 🎨 Image Studio or character editor to use them here!
+              </div>
+            } @else {
+              <div class="bg-store-grid">
+                @for (img of filteredStoreImages(); track img.id) {
+                  <button
+                    type="button"
+                    class="bg-store-tile"
+                    [class.selected]="activeBackgroundUrl() === img.image_url"
+                    [disabled]="isSavingBackground()"
+                    (click)="selectBackgroundImage(img.image_url)"
+                    [title]="img.prompt"
+                  >
+                    <img [src]="img.image_url" [alt]="img.prompt" loading="lazy" />
+                    <div class="tile-overlay">
+                      <span class="tile-badge">{{ img.mode === 'avatar' ? '👤 Avatar' : img.mode === 'image-to-image' ? '🖼️ I2I' : '✨ T2I' }}</span>
+                      @if (activeBackgroundUrl() === img.image_url) {
+                        <span class="tile-active">✓ Active</span>
+                      }
+                      <span class="tile-prompt">{{ img.prompt }}</span>
+                    </div>
+                  </button>
+                }
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          @if (activeBackgroundUrl()) {
+            <button
+              class="btn-sub secondary"
+              (click)="selectBackgroundImage(null)"
+              [disabled]="isSavingBackground()"
+            >
+              Reset to Default Dark
+            </button>
+          }
+          <button class="btn-sub ghost" (click)="showBackgroundModal.set(false)">Close</button>
         </div>
       </div>
     </div>

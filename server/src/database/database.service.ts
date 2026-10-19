@@ -36,6 +36,7 @@ const ALLOWED_TABLES = [
   'turn_traces',
   'app_settings',
   'session_compressions',
+  'generated_images',
 ] as const;
 
 export type AllowedTableName = (typeof ALLOWED_TABLES)[number];
@@ -128,9 +129,31 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
     `);
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS generated_images (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        character_id TEXT REFERENCES characters(id) ON DELETE SET NULL,
+        mode TEXT NOT NULL DEFAULT 'text-to-image',
+        prompt TEXT NOT NULL,
+        model_used TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        image_url TEXT NOT NULL,
+        reference_image_url TEXT,
+        aspect_ratio TEXT,
+        width INTEGER,
+        height INTEGER,
+        file_size_bytes INTEGER,
+        latency_ms INTEGER,
+        raw_response_json TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+    `);
+
     // Apply incremental column migrations for existing databases
     this.ensureColumn('users', 'email', 'TEXT');
     this.ensureColumn('users', 'wiro_key_encrypted', 'TEXT');
+    this.ensureColumn('characters', 'avatar_prompt', 'TEXT');
     this.ensureColumn('keyword_memories', 'session_id', 'TEXT');
     this.ensureColumn('keyword_memories', 'persona_id', 'TEXT REFERENCES personas(id) ON DELETE CASCADE');
     this.ensureColumn('keyword_memories', 'scope', "TEXT DEFAULT 'session'");
@@ -141,6 +164,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     this.ensureColumn('sessions', 'chat_model', 'TEXT');
     this.ensureColumn('sessions', 'text_to_image_model', 'TEXT');
     this.ensureColumn('sessions', 'image_to_image_model', 'TEXT');
+    this.ensureColumn('sessions', 'background_image_url', 'TEXT');
     this.ensureColumn('sessions', 'active_compression_id', 'TEXT REFERENCES session_compressions(id) ON DELETE SET NULL');
 
     // Messages reroll and edit tracking migrations
@@ -456,6 +480,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         creator_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         name TEXT NOT NULL,
         avatar_url TEXT,
+        avatar_prompt TEXT,
         tagline TEXT,
         greeting TEXT NOT NULL,
         system_prompt TEXT NOT NULL,
@@ -559,6 +584,24 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
         triggered_keywords_json TEXT DEFAULT '[]',
         recalled_memories_json TEXT DEFAULT '[]',
         compression_event_json TEXT,
+        created_at TEXT DEFAULT (datetime('now'))
+      );
+      CREATE TABLE IF NOT EXISTS generated_images (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        character_id TEXT REFERENCES characters(id) ON DELETE SET NULL,
+        mode TEXT NOT NULL DEFAULT 'text-to-image',
+        prompt TEXT NOT NULL,
+        model_used TEXT NOT NULL,
+        file_path TEXT NOT NULL,
+        image_url TEXT NOT NULL,
+        reference_image_url TEXT,
+        aspect_ratio TEXT,
+        width INTEGER,
+        height INTEGER,
+        file_size_bytes INTEGER,
+        latency_ms INTEGER,
+        raw_response_json TEXT,
         created_at TEXT DEFAULT (datetime('now'))
       );
       CREATE VIRTUAL TABLE IF NOT EXISTS vec_episodic_memories USING vec0(

@@ -26,6 +26,7 @@ import {
 } from '../../services/sessions.service';
 import { AuthService } from '../../services/auth.service';
 import { ModelsService, ModelSummary } from '../../services/models.service';
+import { ImagesService, GeneratedImageItem } from '../../services/images.service';
 import { ModelPickerTableComponent } from '../model-picker-table/model-picker-table.component';
 
 @Component({
@@ -38,6 +39,7 @@ import { ModelPickerTableComponent } from '../model-picker-table/model-picker-ta
 export class ChatStageComponent implements OnInit, OnChanges {
   private sessionsService = inject(SessionsService);
   private modelsService = inject(ModelsService);
+  private imagesService = inject(ImagesService);
   private authService = inject(AuthService);
   private sanitizer = inject(DomSanitizer);
   private ngZone = inject(NgZone);
@@ -114,6 +116,24 @@ export class ChatStageComponent implements OnInit, OnChanges {
   textToImageModelsList = signal<ModelSummary[]>([]);
   imageToImageModelsList = signal<ModelSummary[]>([]);
   isSavingModels = signal<boolean>(false);
+
+  // Session Background Image Modal
+  showBackgroundModal = signal<boolean>(false);
+  storeImagesList = signal<GeneratedImageItem[]>([]);
+  loadingStoreImages = signal<boolean>(false);
+  backgroundFilter = signal<'all' | 'avatar' | 'text-to-image' | 'image-to-image'>('all');
+  isSavingBackground = signal<boolean>(false);
+
+  filteredStoreImages = computed(() => {
+    const f = this.backgroundFilter();
+    const list = this.storeImagesList();
+    if (f === 'all') return list;
+    return list.filter((img) => img.mode === f);
+  });
+
+  activeBackgroundUrl = computed(() => {
+    return this.session()?.background_image_url || null;
+  });
 
   // Sessions Drawer (Switcher)
   showSessionsDrawer = signal<boolean>(false);
@@ -532,6 +552,40 @@ export class ChatStageComponent implements OnInit, OnChanges {
           alert(err.error?.message || 'Failed to update session models.');
         },
       });
+  }
+
+  // --- Session Background Picker Modal ---
+
+  openBackgroundModal() {
+    this.showBackgroundModal.set(true);
+    this.loadingStoreImages.set(true);
+    this.imagesService.listImages().subscribe({
+      next: (list) => {
+        this.storeImagesList.set(list || []);
+        this.loadingStoreImages.set(false);
+      },
+      error: () => {
+        this.loadingStoreImages.set(false);
+      },
+    });
+  }
+
+  selectBackgroundImage(imageUrl: string | null) {
+    const s = this.session();
+    if (!s || this.isSavingBackground()) return;
+
+    this.isSavingBackground.set(true);
+    this.sessionsService.updateBackground(s.id, imageUrl).subscribe({
+      next: (updatedSession) => {
+        this.session.set(updatedSession);
+        this.isSavingBackground.set(false);
+        this.showBackgroundModal.set(false);
+      },
+      error: (err) => {
+        this.isSavingBackground.set(false);
+        alert(err.error?.message || 'Failed to update session background.');
+      },
+    });
   }
 
   // --- Session Switcher Drawer ---

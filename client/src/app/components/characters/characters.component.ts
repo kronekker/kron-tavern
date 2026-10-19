@@ -7,20 +7,24 @@ import {
   CreateCharacterDto,
   UpdateCharacterDto,
   CreateSnippetInput,
-  KeywordSnippet,
 } from '../../services/characters.service';
 import { AuthService } from '../../services/auth.service';
+import { ImagesService, GeneratedImageItem } from '../../services/images.service';
+import { ModelsService, ModelSummary } from '../../services/models.service';
+import { ModelPickerTableComponent } from '../model-picker-table/model-picker-table.component';
 
 @Component({
   selector: 'app-characters',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ModelPickerTableComponent],
   templateUrl: './characters.component.html',
   styleUrls: ['./characters.component.scss'],
 })
 export class CharactersComponent implements OnInit {
   charactersService = inject(CharactersService);
   authService = inject(AuthService);
+  imagesService = inject(ImagesService);
+  modelsService = inject(ModelsService);
 
   close = output<void>();
   startChat = output<CharacterItem>();
@@ -42,6 +46,7 @@ export class CharactersComponent implements OnInit {
   formName = signal<string>('');
   formTagline = signal<string>('');
   formAvatarUrl = signal<string>('');
+  formAvatarPrompt = signal<string>('');
   formGreeting = signal<string>('');
   formSystemPrompt = signal<string>('');
   formScenario = signal<string>('');
@@ -50,6 +55,30 @@ export class CharactersComponent implements OnInit {
   formDefaultModel = signal<string>('');
   formTemperature = signal<number>(0.8);
   formSnippets = signal<CreateSnippetInput[]>([]);
+
+  // Avatar T2I Generation State
+  generatingAvatar = signal<boolean>(false);
+  avatarAspectRatio = signal<string>('1:1');
+  selectedT2IModel = signal<string>('');
+  showT2IModelPicker = signal<boolean>(false);
+  t2iModels = signal<ModelSummary[]>([]);
+  showSavedAvatars = signal<boolean>(false);
+  savedImages = signal<GeneratedImageItem[]>([]);
+
+  resolvedSelectedT2IModel = computed(() => {
+    const slug = this.selectedT2IModel();
+    const list = this.t2iModels();
+    if (!slug) return list[0] || null;
+    const t = slug.trim().toLowerCase();
+    return (
+      list.find(
+        (m) =>
+          m.slug.toLowerCase() === t ||
+          m.id.toLowerCase() === t ||
+          m.title.toLowerCase() === t,
+      ) || null
+    );
+  });
 
   // Filtered list
   filteredCharacters = computed(() => {
@@ -67,6 +96,27 @@ export class CharactersComponent implements OnInit {
 
   ngOnInit() {
     this.loadCharacters();
+    this.loadT2IModels();
+  }
+
+  loadT2IModels() {
+    this.modelsService.getCatalog('text-to-image').subscribe({
+      next: (res) => this.t2iModels.set(res.models || []),
+    });
+    this.modelsService.getActiveDefaults().subscribe({
+      next: (active) => {
+        if (!this.selectedT2IModel()) {
+          this.selectedT2IModel.set(active.effective.textToImageModel);
+        }
+      },
+    });
+  }
+
+  loadSavedImages() {
+    if (!this.authService.isAuthenticated()) return;
+    this.imagesService.listImages().subscribe({
+      next: (imgs) => this.savedImages.set(imgs),
+    });
   }
 
   setTab(tab: 'public' | 'mine' | 'editor') {
@@ -111,6 +161,7 @@ export class CharactersComponent implements OnInit {
     this.formName.set('');
     this.formTagline.set('');
     this.formAvatarUrl.set('');
+    this.formAvatarPrompt.set('');
     this.formGreeting.set('');
     this.formSystemPrompt.set('');
     this.formScenario.set('');
@@ -119,6 +170,9 @@ export class CharactersComponent implements OnInit {
     this.formDefaultModel.set('');
     this.formTemperature.set(0.8);
     this.formSnippets.set([]);
+    this.showT2IModelPicker.set(false);
+    this.showSavedAvatars.set(false);
+    this.loadSavedImages();
     this.activeTab.set('editor');
   }
 
@@ -136,6 +190,7 @@ export class CharactersComponent implements OnInit {
     this.formName.set(char.name);
     this.formTagline.set(char.tagline || '');
     this.formAvatarUrl.set(char.avatar_url || '');
+    this.formAvatarPrompt.set(char.avatar_prompt || '');
     this.formGreeting.set(char.greeting);
     this.formSystemPrompt.set(char.system_prompt);
     this.formScenario.set(char.scenario || '');
@@ -143,10 +198,16 @@ export class CharactersComponent implements OnInit {
     this.formIsPublic.set(char.is_public === 1);
     this.formDefaultModel.set(char.default_model || '');
     this.formTemperature.set(char.temperature ?? 0.8);
+    this.showT2IModelPicker.set(false);
+    this.showSavedAvatars.set(false);
+    this.loadSavedImages();
 
     // Fetch full snippets for character
     this.charactersService.get(char.id).subscribe({
       next: (detail) => {
+        if (detail.avatar_prompt && !this.formAvatarPrompt()) {
+          this.formAvatarPrompt.set(detail.avatar_prompt);
+        }
         const snips: CreateSnippetInput[] = (detail.snippets || []).map((s) => ({
           id: s.id,
           title: s.title,
@@ -163,6 +224,124 @@ export class CharactersComponent implements OnInit {
     });
 
     this.activeTab.set('editor');
+  }
+
+  draftAvatarPromptFromCharacter() {
+    const name = this.formName().trim() || 'fantasy character';
+    const tagline = this.formTagline().trim();
+    const personality = this.formSystemPrompt().trim().slice(0, 220);
+    const scenario = this.formScenario().trim().slice(0, 140);
+
+    const parts = [
+      `Detailed character portrait of ${name}${tagline ? ', ' + tagline : ''}.`,
+    ];
+    if (personality) {
+      parts.push(`Appearance & vibe: ${personality}`);
+    }
+    if (scenario) {
+      parts.push(`Setting: ${scenario}`);
+    }
+    parts.push('High quality digital character concept art, expressive lighting, sharp focus.');
+    this.formAvatarPrompt.set(parts.join(' '));
+  }
+
+  generateCharacterAvatar() {
+    const prompt = this.formAvatarPrompt().trim();
+    if (!prompt) {
+      this.notification.set({
+        type: 'error',
+        message: 'Please enter a visual description for the avatar (or click Auto-Draft).',
+      });
+      return;
+    }
+
+    this.generatingAvatar.set(true);
+    this.notification.set({
+      type: 'info',
+      message: 'Generating character portrait via Text-to-Image LLM... This may take 5–25 seconds.',
+    });
+
+    const charId = this.editingId();
+    const model = this.selectedT2IModel() || undefined;
+    const aspectRatio = this.avatarAspectRatio() || '1:1';
+
+    if (this.isEditing() && charId) {
+      // Generate & immediately save onto existing character record
+      this.charactersService
+        .generateAvatar(charId, { prompt, model, aspectRatio })
+        .subscribe({
+          next: (res) => {
+            this.generatingAvatar.set(false);
+            this.formAvatarUrl.set(res.character.avatar_url || res.image.image_url);
+            this.formAvatarPrompt.set(res.character.avatar_prompt || prompt);
+            this.loadSavedImages();
+            this.loadCharacters();
+            this.notification.set({
+              type: 'success',
+              message: `Generated and saved new avatar for '${res.character.name}'!`,
+            });
+          },
+          error: (err) => {
+            this.generatingAvatar.set(false);
+            this.notification.set({
+              type: 'error',
+              message:
+                err.error?.message || `Avatar generation failed: ${err.message}`,
+            });
+          },
+        });
+    } else {
+      // Creating a new character not yet in DB: generate into store and populate formAvatarUrl
+      this.imagesService
+        .generateTextToImage({
+          prompt,
+          model,
+          aspectRatio,
+          mode: 'avatar',
+        })
+        .subscribe({
+          next: (img) => {
+            this.generatingAvatar.set(false);
+            this.formAvatarUrl.set(img.image_url);
+            this.loadSavedImages();
+            this.notification.set({
+              type: 'success',
+              message: 'Avatar generated and saved to backend store! Click Create Character to finish.',
+            });
+          },
+          error: (err) => {
+            this.generatingAvatar.set(false);
+            this.notification.set({
+              type: 'error',
+              message:
+                err.error?.message || `Avatar generation failed: ${err.message}`,
+            });
+          },
+        });
+    }
+  }
+
+  selectSavedAvatar(img: GeneratedImageItem) {
+    this.formAvatarUrl.set(img.image_url);
+    if (img.prompt) {
+      this.formAvatarPrompt.set(img.prompt);
+    }
+    this.notification.set({
+      type: 'info',
+      message: 'Selected image applied to Avatar URL. Save character to persist.',
+    });
+  }
+
+  deleteSavedImage(img: GeneratedImageItem, event: Event) {
+    event.stopPropagation();
+    this.imagesService.deleteImage(img.id).subscribe({
+      next: () => {
+        this.savedImages.update((list) => list.filter((i) => i.id !== img.id));
+        if (this.formAvatarUrl() === img.image_url) {
+          this.formAvatarUrl.set('');
+        }
+      },
+    });
   }
 
   // Snippet List Management in Form
@@ -222,6 +401,7 @@ export class CharactersComponent implements OnInit {
       name,
       tagline: this.formTagline().trim() || null,
       avatar_url: this.formAvatarUrl().trim() || null,
+      avatar_prompt: this.formAvatarPrompt().trim() || null,
       greeting,
       system_prompt: systemPrompt,
       scenario: this.formScenario().trim() || null,

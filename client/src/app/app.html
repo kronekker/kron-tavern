@@ -36,6 +36,10 @@
           </button>
         }
 
+        <button class="nav-btn secondary" (click)="toggleImageStudio()" title="Standalone Text-to-Image & Image-to-Image Studio">
+          <span>🎨 Image Studio</span>
+        </button>
+
         <button class="nav-btn secondary" (click)="toggleModels()" title="Browse Multimodal AI Models">
           <span>🤖 Models</span>
         </button>
@@ -166,6 +170,10 @@
               🎭 Browse Characters
             </button>
 
+            <button class="btn-cta secondary" (click)="toggleImageStudio()">
+              🎨 AI Image Studio
+            </button>
+
             @if (authService.isAuthenticated()) {
               <button class="btn-cta secondary" (click)="togglePersonas()">
                 👤 My Roleplay Personas
@@ -189,6 +197,11 @@
   <!-- Personas Modal -->
   @if (showPersonas()) {
     <app-personas (close)="showPersonas.set(false)" />
+  }
+
+  <!-- Standalone Image Studio Modal -->
+  @if (showImageStudio()) {
+    <app-image-studio (close)="showImageStudio.set(false)" />
   }
 
   <!-- Sessions Modal -->

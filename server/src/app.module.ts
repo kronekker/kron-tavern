@@ -11,6 +11,7 @@ import { ModelsModule } from './models/models.module.js';
 import { CharactersModule } from './characters/characters.module.js';
 import { PersonasModule } from './personas/personas.module.js';
 import { SessionsModule } from './sessions/sessions.module.js';
+import { ImagesModule } from './images/images.module.js';
 
 // Locate production Angular SPA build if present
 const candidatePaths = [
@@ -26,6 +27,7 @@ const staticPath = candidatePaths.find((p) => existsSync(p)) ?? null;
     AuthModule,
     ModelsModule,
     AdminModule,
+    ImagesModule,
     CharactersModule,
     PersonasModule,
     SessionsModule,
@@ -33,7 +35,7 @@ const staticPath = candidatePaths.find((p) => existsSync(p)) ?? null;
       ? [
           ServeStaticModule.forRoot({
             rootPath: staticPath,
-            exclude: ['/api*'],
+            exclude: ['/api/{*splat}'],
           }),
         ]
       : []),

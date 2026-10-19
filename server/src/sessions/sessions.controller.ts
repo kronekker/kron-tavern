@@ -65,6 +65,16 @@ export class SessionsController {
     return this.sessionsService.updateSessionModels(id, req.user.userId, models);
   }
 
+  @Put(':id/background')
+  @ApiOperation({ summary: 'Update session background image (character avatar, image store URL, or null for default)' })
+  updateBackground(
+    @Req() req: AuthenticatedRequest,
+    @Param('id') id: string,
+    @Body() body: { backgroundImageUrl?: string | null },
+  ) {
+    return this.sessionsService.updateSessionBackground(id, req.user.userId, body.backgroundImageUrl ?? null);
+  }
+
   @Post(':id/messages')
   @ApiOperation({ summary: 'Send user message and stream character response via SSE' })
   async sendMessage(

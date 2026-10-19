@@ -1,6 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
+import { GeneratedImageItem } from './images.service';
 
 export interface KeywordSnippet {
   id: string;
@@ -23,6 +24,7 @@ export interface CharacterItem {
   creator_name?: string;
   name: string;
   avatar_url: string | null;
+  avatar_prompt?: string | null;
   tagline: string | null;
   greeting: string;
   system_prompt: string;
@@ -49,6 +51,7 @@ export interface CreateSnippetInput {
 export interface CreateCharacterDto {
   name: string;
   avatar_url?: string | null;
+  avatar_prompt?: string | null;
   tagline?: string | null;
   greeting: string;
   system_prompt: string;
@@ -63,6 +66,7 @@ export interface CreateCharacterDto {
 export interface UpdateCharacterDto {
   name?: string;
   avatar_url?: string | null;
+  avatar_prompt?: string | null;
   tagline?: string | null;
   greeting?: string;
   system_prompt?: string;
@@ -102,6 +106,16 @@ export class CharactersService {
 
   delete(id: string): Observable<{ success: boolean; id: string }> {
     return this.http.delete<{ success: boolean; id: string }>(`/api/characters/${id}`);
+  }
+
+  generateAvatar(
+    id: string,
+    dto: { prompt: string; model?: string; aspectRatio?: string },
+  ): Observable<{ character: CharacterItem; image: GeneratedImageItem }> {
+    return this.http.post<{ character: CharacterItem; image: GeneratedImageItem }>(
+      `/api/characters/${id}/generate-avatar`,
+      dto,
+    );
   }
 
   getSnippets(characterId: string): Observable<KeywordSnippet[]> {

@@ -17,6 +17,7 @@ export interface SessionItem {
   chat_model: string;
   text_to_image_model: string;
   image_to_image_model: string;
+  background_image_url?: string | null;
   active_compression_id?: string | null;
   context_threshold_percent: number;
   rolling_summary?: string | null;
@@ -118,6 +119,13 @@ export class SessionsService {
     models: { chatModel?: string; textToImageModel?: string; imageToImageModel?: string },
   ): Observable<SessionItem> {
     return this.http.put<SessionItem>(`/api/sessions/${id}/models`, models);
+  }
+
+  updateBackground(
+    id: string,
+    backgroundImageUrl: string | null,
+  ): Observable<SessionItem> {
+    return this.http.put<SessionItem>(`/api/sessions/${id}/background`, { backgroundImageUrl });
   }
 
   editMessage(sessionId: string, messageId: string, content: string): Observable<ChatMessageItem> {

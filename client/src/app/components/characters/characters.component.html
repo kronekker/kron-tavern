@@ -225,15 +225,15 @@
                 <div class="form-group flex-3">
                   <label>Avatar Image URL</label>
                   <input 
-                    type="url" 
+                    type="text" 
                     [(ngModel)]="formAvatarUrl" 
                     name="avatar_url" 
-                    placeholder="https://... or generate in models catalog" 
+                    placeholder="/api/images/file/avatars/... or https://..." 
                   />
                 </div>
 
                 <div class="form-group flex-1 avatar-preview-box">
-                  <label>Preview</label>
+                  <label>Current Avatar</label>
                   <div class="avatar-preview-img">
                     @if (formAvatarUrl()) {
                       <img [src]="formAvatarUrl()" alt="Avatar Preview" />
@@ -242,6 +242,125 @@
                     }
                   </div>
                 </div>
+              </div>
+
+              <!-- AI Avatar Generator Panel (Text-to-Image) -->
+              <div class="avatar-ai-generator-box">
+                <div class="avatar-ai-header">
+                  <div class="avatar-ai-title">
+                    <span class="ai-icon">🎨</span>
+                    <div>
+                      <strong>AI Portrait Generator (Text-to-Image)</strong>
+                      <span class="ai-sub">Describe the character's appearance to generate & save an avatar portrait</span>
+                    </div>
+                  </div>
+
+                  <div class="avatar-ai-top-actions">
+                    <button
+                      type="button"
+                      class="btn-ai-helper"
+                      (click)="draftAvatarPromptFromCharacter()"
+                      title="Auto-draft visual description from character name, tagline, and personality">
+                      🪄 Auto-Draft from Character
+                    </button>
+                    <button
+                      type="button"
+                      class="btn-ai-helper"
+                      [class.active]="showSavedAvatars()"
+                      (click)="showSavedAvatars.set(!showSavedAvatars())">
+                      🗂️ Saved Gallery ({{ savedImages().length }})
+                    </button>
+                  </div>
+                </div>
+
+                <div class="form-group avatar-prompt-group">
+                  <label>
+                    Visual Avatar Description
+                    <span class="hint">(Saved with character profile; sent to Text-to-Image LLM)</span>
+                  </label>
+                  <textarea
+                    rows="2"
+                    [(ngModel)]="formAvatarPrompt"
+                    name="avatar_prompt"
+                    maxlength="1000"
+                    placeholder="e.g. Portrait of Lyra, an eccentric alchemist wearing brass goggles smeared with glowing blue phosphorus, warm candlelit apothecary workshop, detailed fantasy digital painting">
+                  </textarea>
+                </div>
+
+                <div class="avatar-ai-controls-row">
+                  <div class="model-summary-pill" (click)="showT2IModelPicker.set(!showT2IModelPicker())" title="Click to change Text-to-Image model">
+                    <span class="pill-label">T2I Model:</span>
+                    <span class="pill-name">{{ resolvedSelectedT2IModel()?.title || selectedT2IModel() || 'Default T2I' }}</span>
+                    @if (resolvedSelectedT2IModel()?.pricing?.headlineBadge; as cost) {
+                      <span class="pill-cost">{{ cost }}</span>
+                    }
+                    <span class="pill-caret">{{ showT2IModelPicker() ? '▲' : '▼' }}</span>
+                  </div>
+
+                  <div class="ratio-selector">
+                    <label>Ratio:</label>
+                    <select [(ngModel)]="avatarAspectRatio" name="avatar_aspect_ratio">
+                      <option value="1:1">1:1 Square</option>
+                      <option value="3:4">3:4 Portrait</option>
+                      <option value="4:3">4:3 Landscape</option>
+                      <option value="16:9">16:9 Wide</option>
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    class="btn-generate-avatar"
+                    [disabled]="generatingAvatar() || !formAvatarPrompt().trim()"
+                    (click)="generateCharacterAvatar()">
+                    @if (generatingAvatar()) {
+                      <span class="mini-spinner"></span>
+                      <span>Generating Portrait...</span>
+                    } @else {
+                      <span>✨ {{ isEditing() ? 'Generate & Save Avatar' : 'Generate Avatar' }}</span>
+                    }
+                  </button>
+                </div>
+
+                @if (showT2IModelPicker()) {
+                  <div class="t2i-picker-drawer">
+                    <app-model-picker-table
+                      [initialRole]="'text-to-image'"
+                      [textToImageModels]="t2iModels()"
+                      [textToImageModel]="selectedT2IModel()"
+                      (textToImageModelChange)="selectedT2IModel.set($event); showT2IModelPicker.set(false)">
+                    </app-model-picker-table>
+                  </div>
+                }
+
+                @if (showSavedAvatars()) {
+                  <div class="saved-avatars-drawer">
+                    <div class="drawer-header">
+                      <span>Click any stored image to use as this character's avatar:</span>
+                    </div>
+                    @if (savedImages().length === 0) {
+                      <div class="drawer-empty">No generated images in backend store yet.</div>
+                    } @else {
+                      <div class="saved-avatars-grid">
+                        @for (img of savedImages(); track img.id) {
+                          <div
+                            class="saved-avatar-item"
+                            [class.selected]="formAvatarUrl() === img.image_url"
+                            (click)="selectSavedAvatar(img)"
+                            [title]="img.prompt">
+                            <img [src]="img.image_url" [alt]="img.prompt" loading="lazy" />
+                            <button
+                              type="button"
+                              class="btn-del-img"
+                              title="Delete from server store"
+                              (click)="deleteSavedImage(img, $event)">
+                              🗑️
+                            </button>
+                          </div>
+                        }
+                      </div>
+                    }
+                  </div>
+                }
               </div>
 
               <!-- Scope Toggle -->

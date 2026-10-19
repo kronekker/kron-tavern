@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service.js';
+import { ImagesService, GeneratedImageItem } from '../images/images.service.js';
 import { randomBytes } from 'node:crypto';
 
 export interface KeywordSnippet {
@@ -23,6 +24,7 @@ export interface CharacterItem {
   creator_name?: string;
   name: string;
   avatar_url: string | null;
+  avatar_prompt?: string | null;
   tagline: string | null;
   greeting: string;
   system_prompt: string;
@@ -49,6 +51,7 @@ export class CreateSnippetInput {
 export class CreateCharacterDto {
   name!: string;
   avatar_url?: string | null;
+  avatar_prompt?: string | null;
   tagline?: string | null;
   greeting!: string;
   system_prompt!: string;
@@ -63,6 +66,7 @@ export class CreateCharacterDto {
 export class UpdateCharacterDto {
   name?: string;
   avatar_url?: string | null;
+  avatar_prompt?: string | null;
   tagline?: string | null;
   greeting?: string;
   system_prompt?: string;
@@ -76,7 +80,10 @@ export class UpdateCharacterDto {
 
 @Injectable()
 export class CharactersService {
-  constructor(private readonly dbService: DatabaseService) {}
+  constructor(
+    private readonly dbService: DatabaseService,
+    private readonly imagesService: ImagesService,
+  ) {}
 
   private get db() {
     return this.dbService.getDb();
@@ -170,9 +177,9 @@ export class CharactersService {
 
     const stmt = this.db.prepare(`
       INSERT INTO characters (
-        id, creator_id, name, avatar_url, tagline, greeting, system_prompt, 
+        id, creator_id, name, avatar_url, avatar_prompt, tagline, greeting, system_prompt, 
         scenario, dialogue_examples, is_public, default_model, temperature, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     stmt.run(
@@ -180,6 +187,7 @@ export class CharactersService {
       userId,
       dto.name.trim(),
       dto.avatar_url?.trim() || null,
+      dto.avatar_prompt?.trim() || null,
       dto.tagline?.trim() || null,
       dto.greeting.trim(),
       dto.system_prompt.trim(),
@@ -213,6 +221,7 @@ export class CharactersService {
     const now = new Date().toISOString();
     const name = dto.name !== undefined ? dto.name.trim() : existing.name;
     const avatar_url = dto.avatar_url !== undefined ? (dto.avatar_url ? dto.avatar_url.trim() : null) : existing.avatar_url;
+    const avatar_prompt = dto.avatar_prompt !== undefined ? (dto.avatar_prompt ? dto.avatar_prompt.trim() : null) : existing.avatar_prompt;
     const tagline = dto.tagline !== undefined ? (dto.tagline ? dto.tagline.trim() : null) : existing.tagline;
     const greeting = dto.greeting !== undefined ? dto.greeting.trim() : existing.greeting;
     const system_prompt = dto.system_prompt !== undefined ? dto.system_prompt.trim() : existing.system_prompt;
@@ -224,13 +233,14 @@ export class CharactersService {
 
     this.db.prepare(`
       UPDATE characters SET 
-        name = ?, avatar_url = ?, tagline = ?, greeting = ?, system_prompt = ?,
+        name = ?, avatar_url = ?, avatar_prompt = ?, tagline = ?, greeting = ?, system_prompt = ?,
         scenario = ?, dialogue_examples = ?, is_public = ?, default_model = ?, 
         temperature = ?, updated_at = ?
       WHERE id = ?
     `).run(
       name,
       avatar_url,
+      avatar_prompt,
       tagline,
       greeting,
       system_prompt,
@@ -249,6 +259,49 @@ export class CharactersService {
     }
 
     return this.get(id, userId, isAdmin);
+  }
+
+  async generateAvatar(
+    id: string,
+    userId: string,
+    dto: { prompt: string; model?: string; aspectRatio?: string },
+    isAdmin = false,
+  ): Promise<{ character: CharacterItem; image: GeneratedImageItem }> {
+    const existing = this.db.prepare(`SELECT * FROM characters WHERE id = ?`).get(id) as
+      | CharacterItem
+      | undefined;
+    if (!existing) {
+      throw new NotFoundException(`Character with ID '${id}' not found.`);
+    }
+
+    if (existing.creator_id !== userId && !isAdmin) {
+      throw new ForbiddenException('You can only generate avatars for characters you created.');
+    }
+
+    const promptText = dto.prompt?.trim();
+    if (!promptText) {
+      throw new BadRequestException('Please provide a visual description for the character avatar.');
+    }
+
+    const generated = await this.imagesService.generateTextToImage(userId, {
+      prompt: promptText,
+      model: dto.model,
+      aspectRatio: dto.aspectRatio || '1:1',
+      characterId: id,
+      mode: 'avatar',
+    });
+
+    const now = new Date().toISOString();
+    this.db
+      .prepare(
+        `UPDATE characters SET avatar_url = ?, avatar_prompt = ?, updated_at = ? WHERE id = ?`,
+      )
+      .run(generated.image_url, promptText, now, id);
+
+    return {
+      character: this.get(id, userId, isAdmin),
+      image: generated,
+    };
   }
 
   delete(id: string, userId: string, isAdmin = false): { success: boolean; id: string } {

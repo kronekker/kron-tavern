@@ -8,6 +8,7 @@ import { PersonasComponent } from './components/personas/personas.component';
 import { ChatStageComponent } from './components/chat-stage/chat-stage.component';
 import { SessionSetupModalComponent } from './components/session-setup-modal/session-setup-modal.component';
 import { SessionsModalComponent } from './components/sessions-modal/sessions-modal.component';
+import { ImageStudioComponent } from './components/image-studio/image-studio.component';
 import { AuthService } from './services/auth.service';
 import type { CharacterItem } from './services/characters.service';
 
@@ -24,6 +25,7 @@ import type { CharacterItem } from './services/characters.service';
     ChatStageComponent,
     SessionSetupModalComponent,
     SessionsModalComponent,
+    ImageStudioComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.scss',
@@ -39,6 +41,7 @@ export class App {
   showCharacters = signal<boolean>(false);
   showPersonas = signal<boolean>(false);
   showSessions = signal<boolean>(false);
+  showImageStudio = signal<boolean>(false);
 
   // Active Chat Session State
   activeSessionId = signal<string | null>(null);
@@ -80,6 +83,14 @@ export class App {
 
   togglePersonas() {
     this.showPersonas.update((v) => !v);
+  }
+
+  toggleImageStudio() {
+    if (!this.authService.isAuthenticated()) {
+      this.showAuth.set(true);
+      return;
+    }
+    this.showImageStudio.update((v) => !v);
   }
 
   toggleSessions() {

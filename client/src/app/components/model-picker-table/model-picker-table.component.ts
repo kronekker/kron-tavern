@@ -44,6 +44,7 @@ export class ModelPickerTableComponent implements OnInit {
   imageToImageModels = input<ModelSummary[]>([]);
 
   // UI state
+  initialRole = input<PickerModelRole>('chat');
   activeRole = signal<PickerModelRole>('chat');
   searchQuery = signal<string>('');
 
@@ -117,6 +118,7 @@ export class ModelPickerTableComponent implements OnInit {
   });
 
   ngOnInit() {
+    this.activeRole.set(this.initialRole());
     this.loadLocalStatus();
     if (this.chatModels().length === 0) {
       this.loadAllModels();
