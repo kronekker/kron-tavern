@@ -129,9 +129,9 @@ export class ModelPickerTableComponent implements OnInit {
     this.modelsService.getCatalog('all').subscribe({
       next: (res) => {
         const all = res.models || [];
-        this.internalChatModels.set(all.filter((m) => m.type === 'chat'));
-        this.internalT2IModels.set(all.filter((m) => m.type === 'text-to-image'));
-        this.internalI2IModels.set(all.filter((m) => m.type === 'image-to-image'));
+        this.internalChatModels.set(all.filter((m) => m.type === 'chat' || m.types?.includes('chat')));
+        this.internalT2IModels.set(all.filter((m) => m.type === 'text-to-image' || m.types?.includes('text-to-image')));
+        this.internalI2IModels.set(all.filter((m) => m.type === 'image-to-image' || m.types?.includes('image-to-image')));
       },
     });
   }

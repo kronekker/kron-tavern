@@ -56,6 +56,7 @@ export interface ModelSummary {
   image: string | null;
   categories: string[];
   type: 'chat' | 'text-to-image' | 'image-to-image' | 'video' | 'voice' | 'other';
+  types?: ('chat' | 'text-to-image' | 'image-to-image' | 'video' | 'voice' | 'other')[];
   computingtime: string | null;
   hasParameters: boolean;
   priority: number;

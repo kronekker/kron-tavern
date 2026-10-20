@@ -92,7 +92,11 @@ export class ModelCatalogComponent implements OnInit {
     const q = this.searchQuery().trim().toLowerCase();
 
     if (filter !== 'all') {
-      list = list.filter((m) => m.type === filter);
+      list = list.filter((m) =>
+        Array.isArray(m.types) && m.types.length > 0
+          ? m.types.includes(filter as any)
+          : m.type === filter,
+      );
     }
 
     if (q) {
@@ -196,9 +200,39 @@ export class ModelCatalogComponent implements OnInit {
     });
   }
 
-  isSystemDefault(m: ModelSummary): boolean {
+  getSupportedConfigRoles(m?: ModelSummary | null): ('chat' | 'text-to-image' | 'image-to-image')[] {
+    if (!m) return [];
+    const candidateTypes = Array.isArray(m.types) && m.types.length > 0 ? m.types : [m.type];
+    const roles: ('chat' | 'text-to-image' | 'image-to-image')[] = [];
+    if (candidateTypes.includes('chat')) roles.push('chat');
+    if (candidateTypes.includes('text-to-image')) roles.push('text-to-image');
+    if (candidateTypes.includes('image-to-image')) roles.push('image-to-image');
+    return roles;
+  }
+
+  getRoleLabel(role: string): string {
+    if (role === 'chat') return 'Chat (LLM)';
+    if (role === 'text-to-image') return 'Text-to-Image';
+    if (role === 'image-to-image') return 'Image-to-Image';
+    return role;
+  }
+
+  getRoleShortLabel(role: string): string {
+    if (role === 'chat') return 'LLM';
+    if (role === 'text-to-image') return 'T2I';
+    if (role === 'image-to-image') return 'I2I';
+    return role;
+  }
+
+  isSystemDefault(m: ModelSummary, specificType?: string): boolean {
     const d = this.activeDefaults()?.system;
     if (!d) return false;
+    const target = specificType || (this.activeFilter() !== 'all' ? this.activeFilter() : null);
+
+    if (target === 'chat') return d.chatModel === m.slug || d.chatModel === m.id;
+    if (target === 'text-to-image') return d.textToImageModel === m.slug || d.textToImageModel === m.id;
+    if (target === 'image-to-image') return d.imageToImageModel === m.slug || d.imageToImageModel === m.id;
+
     return (
       d.chatModel === m.slug ||
       d.textToImageModel === m.slug ||
@@ -209,9 +243,15 @@ export class ModelCatalogComponent implements OnInit {
     );
   }
 
-  isUserPreferred(m: ModelSummary): boolean {
+  isUserPreferred(m: ModelSummary, specificType?: string): boolean {
     const u = this.activeDefaults()?.user;
     if (!u) return false;
+    const target = specificType || (this.activeFilter() !== 'all' ? this.activeFilter() : null);
+
+    if (target === 'chat') return u.chatModel === m.slug || u.chatModel === m.id;
+    if (target === 'text-to-image') return u.textToImageModel === m.slug || u.textToImageModel === m.id;
+    if (target === 'image-to-image') return u.imageToImageModel === m.slug || u.imageToImageModel === m.id;
+
     return (
       u.chatModel === m.slug ||
       u.textToImageModel === m.slug ||
@@ -222,11 +262,21 @@ export class ModelCatalogComponent implements OnInit {
     );
   }
 
-  setAsSystemDefault(m: ModelSummary) {
+  setAsSystemDefault(m: ModelSummary, specificType?: string) {
+    let targetType = specificType;
+    if (!targetType) {
+      if (this.activeFilter() !== 'all' && (m.types?.includes(this.activeFilter() as any) || m.type === this.activeFilter())) {
+        targetType = this.activeFilter();
+      } else {
+        const supported = this.getSupportedConfigRoles(m);
+        targetType = supported[0] || m.type;
+      }
+    }
+
     let payload: any = {};
-    if (m.type === 'chat') payload = { chatModel: m.slug };
-    else if (m.type === 'text-to-image') payload = { textToImageModel: m.slug };
-    else if (m.type === 'image-to-image') payload = { imageToImageModel: m.slug };
+    if (targetType === 'chat') payload = { chatModel: m.slug };
+    else if (targetType === 'text-to-image') payload = { textToImageModel: m.slug };
+    else if (targetType === 'image-to-image') payload = { imageToImageModel: m.slug };
     else return;
 
     this.modelsService.updateSystemDefaults(payload).subscribe({
@@ -234,7 +284,7 @@ export class ModelCatalogComponent implements OnInit {
         this.activeDefaults.set(res);
         this.notification.set({
           type: 'success',
-          message: `👑 Model '${m.title}' set as Tavern System Default for ${m.type}!`,
+          message: `👑 Model '${m.title}' set as Tavern System Default for ${this.getRoleLabel(targetType)}!`,
         });
       },
       error: (err) => {
@@ -246,11 +296,21 @@ export class ModelCatalogComponent implements OnInit {
     });
   }
 
-  setAsUserPreferred(m: ModelSummary) {
+  setAsUserPreferred(m: ModelSummary, specificType?: string) {
+    let targetType = specificType;
+    if (!targetType) {
+      if (this.activeFilter() !== 'all' && (m.types?.includes(this.activeFilter() as any) || m.type === this.activeFilter())) {
+        targetType = this.activeFilter();
+      } else {
+        const supported = this.getSupportedConfigRoles(m);
+        targetType = supported[0] || m.type;
+      }
+    }
+
     let payload: any = {};
-    if (m.type === 'chat') payload = { chatModel: m.slug };
-    else if (m.type === 'text-to-image') payload = { textToImageModel: m.slug };
-    else if (m.type === 'image-to-image') payload = { imageToImageModel: m.slug };
+    if (targetType === 'chat') payload = { chatModel: m.slug };
+    else if (targetType === 'text-to-image') payload = { textToImageModel: m.slug };
+    else if (targetType === 'image-to-image') payload = { imageToImageModel: m.slug };
     else return;
 
     this.modelsService.updateUserDefaults(payload).subscribe({
@@ -258,7 +318,7 @@ export class ModelCatalogComponent implements OnInit {
         this.activeDefaults.set(res);
         this.notification.set({
           type: 'success',
-          message: `🎯 Model '${m.title}' set as your Preferred Model for ${m.type}!`,
+          message: `🎯 Model '${m.title}' set as your Preferred Model for ${this.getRoleLabel(targetType)}!`,
         });
       },
       error: (err) => {
@@ -270,11 +330,21 @@ export class ModelCatalogComponent implements OnInit {
     });
   }
 
-  revertUserPreference(m: ModelSummary) {
+  revertUserPreference(m: ModelSummary, specificType?: string) {
+    let targetType = specificType;
+    if (!targetType) {
+      if (this.activeFilter() !== 'all' && (m.types?.includes(this.activeFilter() as any) || m.type === this.activeFilter())) {
+        targetType = this.activeFilter();
+      } else {
+        const supported = this.getSupportedConfigRoles(m);
+        targetType = supported[0] || m.type;
+      }
+    }
+
     let payload: any = {};
-    if (m.type === 'chat') payload = { chatModel: null };
-    else if (m.type === 'text-to-image') payload = { textToImageModel: null };
-    else if (m.type === 'image-to-image') payload = { imageToImageModel: null };
+    if (targetType === 'chat') payload = { chatModel: null };
+    else if (targetType === 'text-to-image') payload = { textToImageModel: null };
+    else if (targetType === 'image-to-image') payload = { imageToImageModel: null };
     else return;
 
     this.modelsService.updateUserDefaults(payload).subscribe({
@@ -282,7 +352,7 @@ export class ModelCatalogComponent implements OnInit {
         this.activeDefaults.set(res);
         this.notification.set({
           type: 'info',
-          message: `↺ Reverted ${m.type} model to Tavern Admin default.`,
+          message: `↺ Reverted ${this.getRoleLabel(targetType)} model to Tavern Admin default.`,
         });
       },
       error: (err) => {

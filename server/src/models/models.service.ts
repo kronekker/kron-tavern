@@ -144,6 +144,7 @@ export interface ModelSummary {
   image: string | null;
   categories: string[];
   type: ModelCategoryType;
+  types?: ModelCategoryType[];
   computingtime: string | null;
   hasParameters: boolean;
   priority: number;
@@ -274,7 +275,10 @@ export class ModelsService implements OnModuleInit {
             this.selectedCategories = content.selectedCategories;
           }
           if (!existsSync(this.rawPath) && Array.isArray(content.models)) {
-            this.cachedSummaries = content.models;
+            this.cachedSummaries = content.models.map((m: any) => ({
+              ...m,
+              types: Array.isArray(m.types) && m.types.length > 0 ? m.types : this.classifyCategories(m.categories || [m.type]),
+            }));
             this.logger.log(
               `Loaded ${this.cachedSummaries.length} model summaries from ${this.catalogPath}`,
             );
@@ -401,6 +405,7 @@ export class ModelsService implements OnModuleInit {
           image: null,
           categories: ['llm', 'chat', 'local-llamacpp'],
           type: 'chat',
+          types: ['chat'],
           computingtime: 'Local Workstation',
           hasParameters: false,
           priority: 1000,
@@ -904,6 +909,7 @@ export class ModelsService implements OnModuleInit {
         image: t.image || null,
         categories: t.categories || [],
         type: this.classifyCategory(t.categories || []),
+        types: this.classifyCategories(t.categories || []),
         computingtime: t.computingtime || null,
         hasParameters: Array.isArray(t.parameters) && t.parameters.length > 0,
         priority: t.priority ?? 0,
@@ -934,13 +940,31 @@ export class ModelsService implements OnModuleInit {
     this.logger.log(`Indexed and saved ${this.cachedSummaries.length} models into ${this.catalogPath}`);
   }
 
+  classifyCategories(cats: string[]): ModelCategoryType[] {
+    const types: ModelCategoryType[] = [];
+    if (cats.some((c) => ['partner-llm', 'llm', 'llm-reasoning', 'chat'].includes(c))) {
+      types.push('chat');
+    }
+    if (cats.includes('text-to-image')) {
+      types.push('text-to-image');
+    }
+    if (cats.some((c) => ['image-to-image', 'image-editing'].includes(c))) {
+      types.push('image-to-image');
+    }
+    if (cats.some((c) => ['text-to-video', 'image-to-video', 'video-to-video'].includes(c))) {
+      types.push('video');
+    }
+    if (cats.some((c) => ['text-to-speech', 'speech-to-speech', 'voice-agent', 'voice-clone'].includes(c))) {
+      types.push('voice');
+    }
+    if (types.length === 0) {
+      types.push('other');
+    }
+    return types;
+  }
+
   classifyCategory(cats: string[]): ModelCategoryType {
-    if (cats.some((c) => ['partner-llm', 'llm', 'llm-reasoning', 'chat'].includes(c))) return 'chat';
-    if (cats.includes('text-to-image')) return 'text-to-image';
-    if (cats.some((c) => ['image-to-image', 'image-editing'].includes(c))) return 'image-to-image';
-    if (cats.some((c) => ['text-to-video', 'image-to-video', 'video-to-video'].includes(c))) return 'video';
-    if (cats.some((c) => ['text-to-speech', 'speech-to-speech', 'voice-agent', 'voice-clone'].includes(c))) return 'voice';
-    return 'other';
+    return this.classifyCategories(cats)[0] || 'other';
   }
 
   private getCombinedSummaries(): ModelSummary[] {
@@ -959,7 +983,11 @@ export class ModelsService implements OnModuleInit {
     let result = this.getCombinedSummaries();
 
     if (type && type !== 'all') {
-      result = result.filter((m) => m.type === type);
+      result = result.filter((m) =>
+        Array.isArray(m.types) && m.types.length > 0
+          ? m.types.includes(type as ModelCategoryType)
+          : m.type === type,
+      );
     }
 
     if (query && query.trim()) {
@@ -992,7 +1020,15 @@ export class ModelsService implements OnModuleInit {
     };
 
     for (const m of combined) {
-      breakdown[m.type] = (breakdown[m.type] || 0) + 1;
+      if (Array.isArray(m.types) && m.types.length > 0) {
+        for (const t of m.types) {
+          if (breakdown[t] !== undefined) {
+            breakdown[t] = (breakdown[t] || 0) + 1;
+          }
+        }
+      } else {
+        breakdown[m.type] = (breakdown[m.type] || 0) + 1;
+      }
     }
 
     return {
@@ -1381,7 +1417,11 @@ export class ModelsService implements OnModuleInit {
 
     // 5. If expectedType given and nothing matched, find first model of that type
     if (expectedType) {
-      const fallback = combined.find((m) => m.type === expectedType);
+      const fallback = combined.find((m) =>
+        Array.isArray(m.types) && m.types.length > 0
+          ? m.types.includes(expectedType)
+          : m.type === expectedType,
+      );
       if (fallback) return fallback;
     }
 

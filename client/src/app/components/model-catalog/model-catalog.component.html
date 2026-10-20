@@ -261,9 +261,13 @@
                     (click)="displayModel(model, false)"
                   >
                     <td class="col-type">
-                      <span class="badge category-badge" [class]="getCategoryBadgeClass(model.type)">
-                        {{ getCategoryLabel(model.type) }}
-                      </span>
+                      <div class="tbl-types-wrap">
+                        @for (t of (model.types || [model.type]); track t) {
+                          <span class="badge category-badge" [class]="getCategoryBadgeClass(t)">
+                            {{ getCategoryLabel(t) }}
+                          </span>
+                        }
+                      </div>
                     </td>
                     <td class="col-model">
                       <div class="tbl-model-main">
@@ -299,26 +303,51 @@
                     </td>
                     <td class="col-actions" (click)="$event.stopPropagation()">
                       <div class="tbl-actions-group">
-                        @if (['chat', 'text-to-image', 'image-to-image'].includes(model.type)) {
-                          @if (authService.isAuthenticated()) {
-                            <button
-                              class="btn-tbl-act pref"
-                              [class.active]="isUserPreferred(model)"
-                              (click)="isUserPreferred(model) ? revertUserPreference(model) : setAsUserPreferred(model)"
-                              title="Set or revert personal preferred model"
-                            >
-                              🎯 {{ isUserPreferred(model) ? 'Preferred' : 'Use' }}
-                            </button>
-                          }
-                          @if (authService.isAdmin()) {
-                            <button
-                              class="btn-tbl-act admin-def"
-                              [class.active]="isSystemDefault(model)"
-                              (click)="setAsSystemDefault(model)"
-                              title="Set as Tavern System Default"
-                            >
-                              👑
-                            </button>
+                        @if (getSupportedConfigRoles(model).length > 0) {
+                          @if (activeFilter() !== 'all') {
+                            @if (authService.isAuthenticated()) {
+                              <button
+                                class="btn-tbl-act pref"
+                                [class.active]="isUserPreferred(model)"
+                                (click)="isUserPreferred(model) ? revertUserPreference(model) : setAsUserPreferred(model)"
+                                title="Set or revert personal preferred model"
+                              >
+                                🎯 {{ isUserPreferred(model) ? 'Preferred' : 'Use' }}
+                              </button>
+                            }
+                            @if (authService.isAdmin()) {
+                              <button
+                                class="btn-tbl-act admin-def"
+                                [class.active]="isSystemDefault(model)"
+                                (click)="setAsSystemDefault(model)"
+                                title="Set as Tavern System Default"
+                              >
+                                👑
+                              </button>
+                            }
+                          } @else {
+                            @for (role of getSupportedConfigRoles(model); track role) {
+                              @if (authService.isAuthenticated()) {
+                                <button
+                                  class="btn-tbl-act pref"
+                                  [class.active]="isUserPreferred(model, role)"
+                                  (click)="isUserPreferred(model, role) ? revertUserPreference(model, role) : setAsUserPreferred(model, role)"
+                                  [title]="'Set or revert personal preferred model for ' + getRoleLabel(role)"
+                                >
+                                  🎯 {{ isUserPreferred(model, role) ? getRoleShortLabel(role) : ('Use ' + getRoleShortLabel(role)) }}
+                                </button>
+                              }
+                              @if (authService.isAdmin()) {
+                                <button
+                                  class="btn-tbl-act admin-def"
+                                  [class.active]="isSystemDefault(model, role)"
+                                  (click)="setAsSystemDefault(model, role)"
+                                  [title]="'Set as Tavern System Default for ' + getRoleLabel(role)"
+                                >
+                                  👑 {{ getRoleShortLabel(role) }}
+                                </button>
+                              }
+                            }
                           }
                         }
                         <button
@@ -351,9 +380,11 @@
                   </div>
                 }
                 <div class="cover-badges">
-                  <span class="badge category-badge" [class]="getCategoryBadgeClass(model.type)">
-                    {{ getCategoryLabel(model.type) }}
-                  </span>
+                  @for (t of (model.types || [model.type]); track t) {
+                    <span class="badge category-badge" [class]="getCategoryBadgeClass(t)">
+                      {{ getCategoryLabel(t) }}
+                    </span>
+                  }
                   @if (isSystemDefault(model)) {
                     <span class="badge default-badge" title="Tavern-wide Default Model">
                       👑 Tavern Default
@@ -476,9 +507,11 @@
         <header class="detail-header">
           <div class="detail-title-group">
             <div class="header-badges">
-              <span class="badge category-badge" [class]="getCategoryBadgeClass(selModel.type)">
-                {{ getCategoryLabel(selModel.type) }}
-              </span>
+              @for (t of (selModel.types || [selModel.type]); track t) {
+                <span class="badge category-badge" [class]="getCategoryBadgeClass(t)">
+                  {{ getCategoryLabel(t) }}
+                </span>
+              }
               <span class="badge pricing-badge" [class]="getPricingPillClass(selectedDetailResponse()?.pricing || selModel.pricing)">
                 {{ (selectedDetailResponse()?.pricing || selModel.pricing).headlineBadge }}
               </span>
@@ -490,31 +523,31 @@
           </div>
 
           <div class="drawer-header-actions">
-            @if (['chat', 'text-to-image', 'image-to-image'].includes(selModel.type)) {
+            @for (role of getSupportedConfigRoles(selModel); track role) {
               @if (authService.isAdmin()) {
                 <button 
                   class="btn-drawer-action default-admin-btn" 
-                  [class.active]="isSystemDefault(selModel)"
-                  (click)="setAsSystemDefault(selModel)"
-                  title="Make this the Tavern System Default for {{ selModel.type }}">
-                  {{ isSystemDefault(selModel) ? '👑 Tavern Default' : '👑 Set as Tavern Default' }}
+                  [class.active]="isSystemDefault(selModel, role)"
+                  (click)="setAsSystemDefault(selModel, role)"
+                  [title]="'Make this the Tavern System Default for ' + getRoleLabel(role)">
+                  {{ isSystemDefault(selModel, role) ? ('👑 ' + getRoleLabel(role) + ' Default') : ('👑 Set as ' + getRoleLabel(role) + ' Default') }}
                 </button>
               }
 
               @if (authService.isAuthenticated()) {
-                @if (isUserPreferred(selModel)) {
+                @if (isUserPreferred(selModel, role)) {
                   <button 
                     class="btn-drawer-action user-pref-btn active" 
-                    (click)="revertUserPreference(selModel)"
-                    title="Remove override and revert to Tavern Default">
-                    🎯 Preferred (Click to Revert)
+                    (click)="revertUserPreference(selModel, role)"
+                    [title]="'Remove ' + getRoleLabel(role) + ' override and revert to Tavern Default'">
+                    🎯 {{ getRoleLabel(role) }} Preferred (Click to Revert)
                   </button>
                 } @else {
                   <button 
                     class="btn-drawer-action user-pref-btn" 
-                    (click)="setAsUserPreferred(selModel)"
-                    title="Set as your personal preferred model for {{ selModel.type }}">
-                    🎯 Set as My Preferred
+                    (click)="setAsUserPreferred(selModel, role)"
+                    [title]="'Set as your personal preferred model for ' + getRoleLabel(role)">
+                    🎯 Set as {{ getRoleLabel(role) }} Preferred
                   </button>
                 }
               }

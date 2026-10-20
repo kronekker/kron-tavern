@@ -87,9 +87,9 @@ export class AdminComponent implements OnInit {
 
     this.modelsService.getCatalog('all').subscribe({
       next: (res) => {
-        this.chatModels.set(res.models.filter((m) => m.type === 'chat'));
-        this.textToImageModels.set(res.models.filter((m) => m.type === 'text-to-image'));
-        this.imageToImageModels.set(res.models.filter((m) => m.type === 'image-to-image'));
+        this.chatModels.set(res.models.filter((m) => m.type === 'chat' || m.types?.includes('chat')));
+        this.textToImageModels.set(res.models.filter((m) => m.type === 'text-to-image' || m.types?.includes('text-to-image')));
+        this.imageToImageModels.set(res.models.filter((m) => m.type === 'image-to-image' || m.types?.includes('image-to-image')));
       },
       error: (err) => console.error('Failed to load catalog models', err),
     });

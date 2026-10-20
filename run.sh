@@ -63,6 +63,20 @@ run_build() {
   echo -e "You can now run: ${BOLD}./run.sh start${NC} to launch the single-port production server.\n"
 }
 
+run_restart_service() {
+  echo -e "\n${MAGENTA}${BOLD}📦 Building Full Production Bundle (Client + Server)...${NC}\n"
+  npm run build
+  echo -e "\n${GREEN}${BOLD}✔ Production build complete!${NC}"
+  echo -e "\n${CYAN}${BOLD}🔄 Restarting systemd user service: kron-droid.service...${NC}\n"
+  if systemctl --user restart kron-droid.service; then
+    echo -e "${GREEN}${BOLD}✔ Service kron-droid.service restarted successfully!${NC}\n"
+    systemctl --user status kron-droid.service --no-pager || true
+  else
+    echo -e "${YELLOW}⚠️ Failed to restart kron-droid.service via systemctl --user.${NC}"
+    echo -e "${YELLOW}Please ensure your user systemd session is active or run: systemctl --user restart kron-droid.service${NC}\n"
+  fi
+}
+
 run_start() {
   if [ ! -d "client/dist/client/browser" ] || [ ! -d "server/dist" ]; then
     echo -e "${YELLOW}⚠️ Production build not found. Running build first...${NC}"
@@ -92,11 +106,12 @@ show_menu() {
   echo -e "  ${CYAN}3)${NC} ${BOLD}Frontend Only${NC}          (Start Angular on :4201 with dev proxy)"
   echo -e "  ${MAGENTA}4)${NC} ${BOLD}Build All${NC}              (Compile Angular SPA + NestJS backend)"
   echo -e "  ${YELLOW}5)${NC} ${BOLD}Production Server${NC}      (Start single-port server on :3004)"
-  echo -e "  ${BLUE}6)${NC} ${BOLD}Install Dependencies${NC}   (Run npm install across root, server, & client)"
-  echo -e "  ${YELLOW}7)${NC} ${BOLD}Clean Build Cache${NC}      (Remove dist directories and build caches)"
+  echo -e "  ${CYAN}6)${NC} ${BOLD}Build & Restart Service${NC} (Build bundle & restart user service kron-droid.service)"
+  echo -e "  ${BLUE}7)${NC} ${BOLD}Install Dependencies${NC}   (Run npm install across root, server, & client)"
+  echo -e "  ${YELLOW}8)${NC} ${BOLD}Clean Build Cache${NC}      (Remove dist directories and build caches)"
   echo -e "  ${CYAN}q)${NC} Exit"
   echo ""
-  read -rp "Enter choice [1-7 or q]: " choice
+  read -rp "Enter choice [1-8 or q]: " choice
 
   case "$choice" in
     1) run_dev ;;
@@ -104,10 +119,11 @@ show_menu() {
     3) run_client ;;
     4) run_build ;;
     5) run_start ;;
-    6) run_install ;;
-    7) run_clean ;;
+    6) run_restart_service ;;
+    7) run_install ;;
+    8) run_clean ;;
     q|Q) echo -e "\nBye! 👋\n"; exit 0 ;;
-    *) echo -e "\n${YELLOW}Invalid option. Please choose 1-7 or q.${NC}\n"; show_menu ;;
+    *) echo -e "\n${YELLOW}Invalid option. Please choose 1-8 or q.${NC}\n"; show_menu ;;
   esac
 }
 
@@ -122,16 +138,17 @@ case "$ACTION" in
   client) run_client ;;
   build) run_build ;;
   start|prod) run_start ;;
+  restart|service|restart-service) run_restart_service ;;
   clean) run_clean ;;
   install) run_install ;;
   help|--help|-h)
-    echo "Usage: ./run.sh [dev|server|client|build|start|clean|install]"
+    echo "Usage: ./run.sh [dev|server|client|build|start|service|restart|clean|install]"
     exit 0
     ;;
   "") show_menu ;;
   *)
     echo -e "${YELLOW}Unknown argument: $ACTION${NC}"
-    echo "Usage: ./run.sh [dev|server|client|build|start|clean|install]"
+    echo "Usage: ./run.sh [dev|server|client|build|start|service|restart|clean|install]"
     exit 1
     ;;
 esac
