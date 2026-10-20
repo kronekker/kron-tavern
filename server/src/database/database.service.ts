@@ -281,6 +281,11 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     }
     const idColumn = tableName === 'app_settings' ? 'key' : 'id';
     const info = this.db.prepare(`DELETE FROM ${tableName} WHERE ${idColumn} = ?`).run(id);
+    if (tableName === 'episodic_memories') {
+      try {
+        this.db.prepare('DELETE FROM vec_episodic_memories WHERE memory_id = ?').run(id);
+      } catch {}
+    }
     return info.changes > 0;
   }
 

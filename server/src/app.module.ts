@@ -12,6 +12,7 @@ import { CharactersModule } from './characters/characters.module.js';
 import { PersonasModule } from './personas/personas.module.js';
 import { SessionsModule } from './sessions/sessions.module.js';
 import { ImagesModule } from './images/images.module.js';
+import { MemoryModule } from './memory/memory.module.js';
 
 // Locate production Angular SPA build if present
 const candidatePaths = [
@@ -28,6 +29,7 @@ const staticPath = candidatePaths.find((p) => existsSync(p)) ?? null;
     ModelsModule,
     AdminModule,
     ImagesModule,
+    MemoryModule,
     CharactersModule,
     PersonasModule,
     SessionsModule,

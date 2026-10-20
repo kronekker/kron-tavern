@@ -27,6 +27,7 @@ import {
 import { AuthService } from '../../services/auth.service';
 import { ModelsService, ModelSummary } from '../../services/models.service';
 import { ImagesService, GeneratedImageItem } from '../../services/images.service';
+import { MemoriesService, EpisodicMemoryItem } from '../../services/memories.service';
 import { ModelPickerTableComponent } from '../model-picker-table/model-picker-table.component';
 
 @Component({
@@ -40,6 +41,7 @@ export class ChatStageComponent implements OnInit, OnChanges {
   private sessionsService = inject(SessionsService);
   private modelsService = inject(ModelsService);
   private imagesService = inject(ImagesService);
+  private memoriesService = inject(MemoriesService);
   private authService = inject(AuthService);
   private sanitizer = inject(DomSanitizer);
   private ngZone = inject(NgZone);
@@ -96,6 +98,7 @@ export class ChatStageComponent implements OnInit, OnChanges {
   showInspectorModal = signal<boolean>(false);
   inspectingTrace = signal<TurnTraceItem | null>(null);
   inspectingTab = signal<'metrics' | 'lore' | 'memories' | 'raw_prompt' | 'raw_response'>('metrics');
+  rawPayloadViewMode = signal<'formatted' | 'json'>('formatted');
 
   // Compression Editor / Creator Modal
   showCompressionModal = signal<boolean>(false);
@@ -133,6 +136,27 @@ export class ChatStageComponent implements OnInit, OnChanges {
 
   activeBackgroundUrl = computed(() => {
     return this.session()?.background_image_url || null;
+  });
+
+  // Episodic Memories Manager Modal
+  showMemoriesModal = signal<boolean>(false);
+  episodicMemoriesList = signal<EpisodicMemoryItem[]>([]);
+  loadingMemories = signal<boolean>(false);
+  extractingMemories = signal<boolean>(false);
+  memoriesFilterScope = signal<'all' | 'session' | 'user'>('all');
+  newMemoryText = signal<string>('');
+  newMemoryImportance = signal<number>(6);
+  newMemoryScope = signal<'session' | 'user'>('session');
+  isCreatingMemory = signal<boolean>(false);
+  editingMemoryId = signal<string | null>(null);
+  editingMemoryText = signal<string>('');
+  editingMemoryImportance = signal<number>(6);
+
+  filteredEpisodicMemories = computed(() => {
+    const scope = this.memoriesFilterScope();
+    const list = this.episodicMemoriesList();
+    if (scope === 'all') return list;
+    return list.filter((m) => m.scope === scope);
   });
 
   // Sessions Drawer (Switcher)
@@ -512,11 +536,38 @@ export class ChatStageComponent implements OnInit, OnChanges {
 
   parseJsonSafely(jsonStr: string | null | undefined): any {
     if (!jsonStr) return null;
+    if (typeof jsonStr === 'object') return jsonStr;
     try {
       return JSON.parse(jsonStr);
     } catch {
       return jsonStr;
     }
+  }
+
+  formatJsonPretty(jsonStr: string | null | undefined, expandNewlines = true): string {
+    if (!jsonStr) return '';
+    const parsed = this.parseJsonSafely(jsonStr);
+    if (typeof parsed === 'string') {
+      return parsed;
+    }
+    const pretty = JSON.stringify(parsed, null, 2);
+    if (!expandNewlines) {
+      return pretty;
+    }
+    // Expand escaped \n and \" inside JSON string values so multi-line prompts/responses are easy to read
+    return pretty.replace(/^(\s*"[^"]+":\s*")((?:[^"\\]|\\.)*)("(?:\s*,)?)$/gm, (_match, prefix, body, suffix) => {
+      if (!body.includes('\\n')) {
+        return `${prefix}${body}${suffix}`;
+      }
+      const indentMatch = prefix.match(/^(\s*)/);
+      const childIndent = (indentMatch ? indentMatch[1] : '') + '  ';
+      const unescaped = body
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n' + childIndent)
+        .replace(/\\"/g, '"')
+        .replace(/\\t/g, '  ');
+      return `${prefix}\n${childIndent}${unescaped}\n${indentMatch ? indentMatch[1] : ''}${suffix}`;
+    });
   }
 
   // --- Session Model Configuration Modal ---
@@ -584,6 +635,132 @@ export class ChatStageComponent implements OnInit, OnChanges {
       error: (err) => {
         this.isSavingBackground.set(false);
         alert(err.error?.message || 'Failed to update session background.');
+      },
+    });
+  }
+
+  // --- Tier 2 Episodic Memories Manager Modal ---
+
+  openMemoriesModal() {
+    this.showMemoriesModal.set(true);
+    this.loadEpisodicMemories();
+  }
+
+  loadEpisodicMemories() {
+    const s = this.session();
+    if (!s) return;
+    this.loadingMemories.set(true);
+    this.memoriesService.list({ sessionId: s.id }).subscribe({
+      next: (list) => {
+        this.episodicMemoriesList.set(list || []);
+        this.loadingMemories.set(false);
+      },
+      error: () => {
+        this.loadingMemories.set(false);
+      },
+    });
+  }
+
+  triggerExtractMemories() {
+    const s = this.session();
+    if (!s || this.extractingMemories()) return;
+
+    this.extractingMemories.set(true);
+    this.memoriesService.extractFromSession(s.id, 8).subscribe({
+      next: () => {
+        this.extractingMemories.set(false);
+        this.loadEpisodicMemories();
+      },
+      error: (err) => {
+        this.extractingMemories.set(false);
+        alert(err.error?.message || 'Failed to extract episodic memories.');
+      },
+    });
+  }
+
+  createManualMemory() {
+    const s = this.session();
+    const text = this.newMemoryText().trim();
+    if (!s || !text || this.isCreatingMemory()) return;
+
+    this.isCreatingMemory.set(true);
+    this.memoriesService
+      .create({
+        sessionId: s.id,
+        characterId: s.character_id,
+        memoryText: text,
+        scope: this.newMemoryScope(),
+        importance: this.newMemoryImportance(),
+      })
+      .subscribe({
+        next: () => {
+          this.newMemoryText.set('');
+          this.newMemoryImportance.set(6);
+          this.isCreatingMemory.set(false);
+          this.loadEpisodicMemories();
+        },
+        error: (err) => {
+          this.isCreatingMemory.set(false);
+          alert(err.error?.message || 'Failed to create memory.');
+        },
+      });
+  }
+
+  toggleMemoryScope(mem: EpisodicMemoryItem) {
+    const targetScope: 'session' | 'user' = mem.scope === 'user' ? 'session' : 'user';
+    this.memoriesService.update(mem.id, { scope: targetScope }).subscribe({
+      next: (updated) => {
+        this.episodicMemoriesList.update((list) =>
+          list.map((m) => (m.id === mem.id ? updated : m)),
+        );
+      },
+      error: (err) => {
+        alert(err.error?.message || 'Failed to update memory scope.');
+      },
+    });
+  }
+
+  startEditMemory(mem: EpisodicMemoryItem) {
+    this.editingMemoryId.set(mem.id);
+    this.editingMemoryText.set(mem.memory_text);
+    this.editingMemoryImportance.set(mem.importance || 6);
+  }
+
+  cancelEditMemory() {
+    this.editingMemoryId.set(null);
+    this.editingMemoryText.set('');
+  }
+
+  saveEditMemory(memId: string) {
+    const text = this.editingMemoryText().trim();
+    if (!text) return;
+
+    this.memoriesService
+      .update(memId, {
+        memoryText: text,
+        importance: this.editingMemoryImportance(),
+      })
+      .subscribe({
+        next: (updated) => {
+          this.episodicMemoriesList.update((list) =>
+            list.map((m) => (m.id === memId ? updated : m)),
+          );
+          this.editingMemoryId.set(null);
+        },
+        error: (err) => {
+          alert(err.error?.message || 'Failed to update memory.');
+        },
+      });
+  }
+
+  deleteEpisodicMemory(memId: string) {
+    if (!confirm('Delete this episodic memory and its vector embedding?')) return;
+    this.memoriesService.delete(memId).subscribe({
+      next: () => {
+        this.episodicMemoriesList.update((list) => list.filter((m) => m.id !== memId));
+      },
+      error: (err) => {
+        alert(err.error?.message || 'Failed to delete memory.');
       },
     });
   }

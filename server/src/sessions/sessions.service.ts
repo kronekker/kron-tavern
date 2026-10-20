@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, BadRequestException, Logger } from '@nes
 import { DatabaseService } from '../database/database.service.js';
 import { ModelsService } from '../models/models.service.js';
 import { AuthService } from '../auth/auth.service.js';
+import { MemoryService } from '../memory/memory.service.js';
 import { randomBytes } from 'node:crypto';
 
 export interface SessionItem {
@@ -113,6 +114,7 @@ export class SessionsService {
     private readonly dbService: DatabaseService,
     private readonly modelsService: ModelsService,
     private readonly authService: AuthService,
+    private readonly memoryService: MemoryService,
   ) {}
 
   private get db() {
@@ -604,6 +606,18 @@ export class SessionsService {
       .prepare('UPDATE sessions SET active_compression_id = ?, rolling_summary = ?, updated_at = ? WHERE id = ?')
       .run(compId, summary, now, sessionId);
 
+    // Consolidate turns into Tier 2 Episodic Memories in background
+    void this.memoryService
+      .extractMemoriesFromRecentTurns({
+        sessionId,
+        userId,
+        sourceTurnId: boundaryMessageId,
+        turnCount: Math.min(12, Math.max(4, turnsToCompress.length)),
+      })
+      .catch((err) => {
+        this.logger.warn(`Background memory extraction during compression failed: ${err.message}`);
+      });
+
     return {
       id: compId,
       session_id: sessionId,
@@ -694,22 +708,15 @@ export class SessionsService {
     return triggered;
   }
 
-  scanEpisodicMemories(characterId: string, sessionId: string, userId: string, _queryText: string) {
-    // Vector & relational episodic memory match
-    try {
-      const memories = this.db
-        .prepare(
-          `
-        SELECT * FROM episodic_memories 
-        WHERE (character_id = ? OR session_id = ? OR user_id = ?)
-        ORDER BY importance DESC LIMIT 5
-      `,
-        )
-        .all(characterId, sessionId, userId) as any[];
-      return memories;
-    } catch {
-      return [];
-    }
+  async scanEpisodicMemories(characterId: string, sessionId: string, userId: string, queryText: string) {
+    return this.memoryService.searchRelevantMemories({
+      userId,
+      sessionId,
+      characterId,
+      queryText,
+      topK: 6,
+      minSimilarity: 0.22,
+    });
   }
 
   // --- Prompt Assembly ---
@@ -885,9 +892,9 @@ Only output the response text as ${persona.name}.
         .run(userMsgId, sessionId, persona?.id, userContent.trim(), session.chat_model, now, now);
     }
 
-    // 2. Scan Keywords and Episodic Memories
+    // 2. Scan Keywords and Episodic Memories (Semantic Vector Search via sqlite-vec)
     const triggeredLore = this.scanKeywordLore(sessionId, character.id, persona?.id, userId, userContent);
-    const recalledMemories = this.scanEpisodicMemories(character.id, sessionId, userId, userContent);
+    const recalledMemories = await this.scanEpisodicMemories(character.id, sessionId, userId, userContent);
 
     // 3. Assemble System Prompt with Lore, Persona, Compression
     const systemPrompt = this.assembleSystemPrompt(
@@ -1019,6 +1026,28 @@ Only output the response text as ${persona.name}.
       );
 
     this.db.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(finishedAt, sessionId);
+
+    // 7. Automated Background Episodic Memory Formation (every 2 user turns or upon context threshold)
+    try {
+      const userTurnCountRow = this.db
+        .prepare("SELECT COUNT(*) AS cnt FROM messages WHERE session_id = ? AND sender_type = 'user' AND is_canonical = 1")
+        .get(sessionId) as { cnt: number } | undefined;
+      const userTurns = userTurnCountRow?.cnt ?? 0;
+      const thresholdPct = session.context_threshold_percent ?? 75;
+
+      if (userTurns > 0 && (userTurns % 2 === 0 || contextFillPercent >= thresholdPct)) {
+        void this.memoryService
+          .extractMemoriesFromRecentTurns({
+            sessionId,
+            userId,
+            sourceTurnId: charMsgId,
+            turnCount: 6,
+          })
+          .catch((err) => {
+            this.logger.warn(`Background episodic memory extraction error: ${err.message}`);
+          });
+      }
+    } catch {}
 
     const message: ChatMessageItem = {
       id: charMsgId,

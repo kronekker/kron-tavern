@@ -64,6 +64,14 @@
           <span>🖼️ <span class="btn-text-sm">Background</span></span>
         </button>
 
+        <button
+          class="stage-nav-btn"
+          (click)="openMemoriesModal()"
+          title="Manage Tier 2 Episodic Memories (Vector Search & Scope Promotion)"
+        >
+          <span>🧠 <span class="btn-text-sm">Memories</span></span>
+        </button>
+
         <button class="stage-nav-btn" (click)="openCompressModal()" title="Create Context Compression Boundary">
           <span>📦 <span class="btn-text-sm">Compress</span></span>
         </button>
@@ -116,6 +124,14 @@
         aria-label="Change Session Background Image"
       >
         🖼️
+      </button>
+      <button
+        class="pill-icon-btn"
+        (click)="openMemoriesModal()"
+        title="Manage Tier 2 Episodic Memories"
+        aria-label="Manage Tier 2 Episodic Memories"
+      >
+        🧠
       </button>
       <button
         class="pill-icon-btn"
@@ -454,7 +470,7 @@
               @if (trace.compression_event_json) {
                 <div class="info-alert">
                   <strong>📦 Context Boundary Compression:</strong>
-                  <pre>{{ trace.compression_event_json }}</pre>
+                  <pre class="formatted-chat-text">{{ formatJsonPretty(trace.compression_event_json) }}</pre>
                 </div>
               }
             </div>
@@ -488,14 +504,27 @@
 
           @if (inspectingTab() === 'memories') {
             <div class="tab-panel">
-              <h4>Recalled Episodic Memories</h4>
+              <div class="panel-header-row">
+                <h4>Recalled Episodic Memories (sqlite-vec Cosine Search)</h4>
+                <button class="btn-sub secondary" (click)="inspectingTrace.set(null); openMemoriesModal()">
+                  🧠 Manage All Memories
+                </button>
+              </div>
               @let memoryList = parseJsonSafely(trace.recalled_memories_json);
               @if (memoryList && memoryList.length > 0) {
                 <div class="memory-grid">
                   @for (mem of memoryList; track mem.id) {
                     <div class="memory-card">
                       <div class="memory-header">
+                        <span class="mem-scope-badge" [class.user-scope]="mem.scope === 'user'">
+                          {{ mem.scope === 'user' ? '🌐 User-Global' : '💬 Session' }}
+                        </span>
                         <span class="mem-badge">Importance: {{ mem.importance }}</span>
+                        @if (mem.similarity !== undefined && mem.similarity !== null) {
+                          <span class="mem-sim-badge" title="Cosine similarity from Xenova/all-MiniLM-L6-v2 + sqlite-vec">
+                            🎯 {{ (mem.similarity * 100) | number:'1.0-1' }}% match
+                          </span>
+                        }
                         <span class="mem-type">{{ mem.memory_type }}</span>
                       </div>
                       <p class="memory-text">{{ mem.memory_text }}</p>
@@ -510,15 +539,114 @@
 
           @if (inspectingTab() === 'raw_prompt') {
             <div class="tab-panel">
-              <h4>Raw Messages & System Directives Payload</h4>
-              <pre class="json-viewer">{{ trace.raw_request_json | json }}</pre>
+              @let reqPayload = parseJsonSafely(trace.raw_request_json);
+              <div class="panel-header-row">
+                <div class="payload-title-group">
+                  <h4>Raw Messages &amp; System Directives Payload</h4>
+                  @if (reqPayload?.model) {
+                    <span class="payload-meta-pill">🤖 {{ reqPayload.model }}</span>
+                  }
+                  @if (reqPayload?.messages?.length) {
+                    <span class="payload-meta-pill">💬 {{ reqPayload.messages.length }} messages</span>
+                  }
+                </div>
+                <div class="view-mode-toggle">
+                  <button
+                    class="toggle-pill"
+                    [class.active]="rawPayloadViewMode() === 'formatted'"
+                    (click)="rawPayloadViewMode.set('formatted')"
+                  >
+                    📖 Formatted Messages
+                  </button>
+                  <button
+                    class="toggle-pill"
+                    [class.active]="rawPayloadViewMode() === 'json'"
+                    (click)="rawPayloadViewMode.set('json')"
+                  >
+                    &#123; &#125; Pretty JSON
+                  </button>
+                </div>
+              </div>
+
+              @if (rawPayloadViewMode() === 'formatted' && reqPayload?.messages?.length) {
+                <div class="raw-messages-stack">
+                  @for (msg of reqPayload.messages; track $index) {
+                    <div
+                      class="raw-msg-card"
+                      [class.role-system]="msg.role === 'system'"
+                      [class.role-user]="msg.role === 'user'"
+                      [class.role-assistant]="msg.role === 'assistant'"
+                    >
+                      <div class="raw-msg-header">
+                        <span class="role-badge">
+                          @if (msg.role === 'system') {
+                            ⚙️ SYSTEM PROMPT &amp; DIRECTIVES
+                          } @else if (msg.role === 'user') {
+                            👤 USER
+                          } @else if (msg.role === 'assistant') {
+                            🎭 ASSISTANT
+                          } @else {
+                            {{ msg.role | uppercase }}
+                          }
+                        </span>
+                        <span class="msg-index">#{{ $index + 1 }} • {{ msg.content?.length || 0 }} chars</span>
+                      </div>
+                      <pre class="formatted-chat-text">{{ msg.content }}</pre>
+                    </div>
+                  }
+                </div>
+              } @else {
+                <pre class="json-viewer">{{ formatJsonPretty(trace.raw_request_json) }}</pre>
+              }
             </div>
           }
 
           @if (inspectingTab() === 'raw_response') {
             <div class="tab-panel">
-              <h4>Raw Model Response Payload</h4>
-              <pre class="json-viewer">{{ trace.raw_response_json | json }}</pre>
+              @let respPayload = parseJsonSafely(trace.raw_response_json);
+              <div class="panel-header-row">
+                <div class="payload-title-group">
+                  <h4>Raw Model Response Payload</h4>
+                  @if (respPayload?.model) {
+                    <span class="payload-meta-pill">🤖 {{ respPayload.model }}</span>
+                  }
+                  @if (respPayload?.latencyMs !== undefined) {
+                    <span class="payload-meta-pill">⚡ {{ respPayload.latencyMs }} ms</span>
+                  }
+                </div>
+                <div class="view-mode-toggle">
+                  <button
+                    class="toggle-pill"
+                    [class.active]="rawPayloadViewMode() === 'formatted'"
+                    (click)="rawPayloadViewMode.set('formatted')"
+                  >
+                    📖 Formatted Response
+                  </button>
+                  <button
+                    class="toggle-pill"
+                    [class.active]="rawPayloadViewMode() === 'json'"
+                    (click)="rawPayloadViewMode.set('json')"
+                  >
+                    &#123; &#125; Pretty JSON
+                  </button>
+                </div>
+              </div>
+
+              @if (rawPayloadViewMode() === 'formatted' && respPayload && (respPayload.completion || respPayload.content || respPayload.response)) {
+                <div class="raw-messages-stack">
+                  <div class="raw-msg-card role-assistant">
+                    <div class="raw-msg-header">
+                      <span class="role-badge">🎭 ASSISTANT COMPLETION</span>
+                      <span class="msg-index">
+                        {{ (respPayload.completion || respPayload.content || respPayload.response)?.length || 0 }} chars
+                      </span>
+                    </div>
+                    <pre class="formatted-chat-text">{{ respPayload.completion || respPayload.content || respPayload.response }}</pre>
+                  </div>
+                </div>
+              } @else {
+                <pre class="json-viewer">{{ formatJsonPretty(trace.raw_response_json) }}</pre>
+              }
             </div>
           }
         </div>
@@ -834,6 +962,194 @@
             </button>
           }
           <button class="btn-sub ghost" (click)="showBackgroundModal.set(false)">Close</button>
+        </div>
+      </div>
+    </div>
+  }
+
+  <!-- Tier 2 Episodic Memories Manager Modal -->
+  @if (showMemoriesModal()) {
+    <div class="modal-backdrop" (click)="showMemoriesModal.set(false)">
+      <div class="modal-card wide-modal memories-modal" (click)="$event.stopPropagation()">
+        <div class="modal-header">
+          <div>
+            <h3>🧠 Tier 2 Episodic Memories</h3>
+            <span class="modal-sub">
+              Embedded locally via <code>Xenova/all-MiniLM-L6-v2</code> (384-d) &amp; searched with <code>sqlite-vec</code>. Promote memories to <strong>User-Global</strong> so other sessions recall them.
+            </span>
+          </div>
+          <button class="modal-close-btn" (click)="showMemoriesModal.set(false)">✕</button>
+        </div>
+
+        <div class="modal-body">
+          <!-- Top Toolbar: Extract Now + Filter Pills -->
+          <div class="memories-toolbar">
+            <div class="filter-pills">
+              <button
+                class="filter-pill"
+                [class.active]="memoriesFilterScope() === 'all'"
+                (click)="memoriesFilterScope.set('all')"
+              >
+                All ({{ episodicMemoriesList().length }})
+              </button>
+              <button
+                class="filter-pill"
+                [class.active]="memoriesFilterScope() === 'session'"
+                (click)="memoriesFilterScope.set('session')"
+              >
+                💬 Session Only
+              </button>
+              <button
+                class="filter-pill"
+                [class.active]="memoriesFilterScope() === 'user'"
+                (click)="memoriesFilterScope.set('user')"
+              >
+                🌐 User-Global
+              </button>
+            </div>
+
+            <button
+              class="btn-sub primary extract-btn"
+              (click)="triggerExtractMemories()"
+              [disabled]="extractingMemories()"
+              title="Parse recent conversation turns for durable facts and embed them into sqlite-vec"
+            >
+              @if (extractingMemories()) {
+                <span class="spinner-small"></span> Extracting Facts...
+              } @else {
+                ✨ Extract From Recent Turns
+              }
+            </button>
+          </div>
+
+          <!-- Manual Memory Creation Form -->
+          <div class="new-memory-box">
+            <div class="new-memory-row">
+              <input
+                type="text"
+                class="modal-input"
+                placeholder="Add a durable fact or memory manually (e.g., 'The user prefers dry humor and studies astrophysics.')..."
+                [ngModel]="newMemoryText()"
+                (ngModelChange)="newMemoryText.set($event)"
+                (keydown.enter)="createManualMemory()"
+              />
+              <select
+                class="modal-select scope-select"
+                [ngModel]="newMemoryScope()"
+                (ngModelChange)="newMemoryScope.set($event)"
+                title="Memory Recall Scope"
+              >
+                <option value="session">💬 Session Scope</option>
+                <option value="user">🌐 User-Global Scope</option>
+              </select>
+              <select
+                class="modal-select imp-select"
+                [ngModel]="newMemoryImportance()"
+                (ngModelChange)="newMemoryImportance.set(+$event)"
+                title="Importance (1-5)"
+              >
+                <option [value]="5">★ 5 (Critical)</option>
+                <option [value]="4">★ 4 (High)</option>
+                <option [value]="3">★ 3 (Normal)</option>
+                <option [value]="2">★ 2 (Low)</option>
+                <option [value]="1">★ 1 (Minor)</option>
+              </select>
+              <button
+                class="btn-sub secondary"
+                (click)="createManualMemory()"
+                [disabled]="!newMemoryText().trim()"
+              >
+                + Add
+              </button>
+            </div>
+          </div>
+
+          <!-- Memories List -->
+          <div class="memories-list-container">
+            @if (loadingMemories()) {
+              <div class="bg-store-empty">Loading episodic memories...</div>
+            } @else if (filteredEpisodicMemories().length === 0) {
+              <div class="bg-store-empty">
+                No episodic memories in this view yet. Memories are automatically extracted in the background every 2 turns (or during context compression), or click <strong>"✨ Extract From Recent Turns"</strong> above.
+              </div>
+            } @else {
+              <div class="memories-list">
+                @for (mem of filteredEpisodicMemories(); track mem.id) {
+                  <div class="memory-item-card" [class.global-card]="mem.scope === 'user'">
+                    <div class="mem-item-top">
+                      <span class="scope-pill" [class.user-global]="mem.scope === 'user'">
+                        {{ mem.scope === 'user' ? '🌐 User-Global' : '💬 This Session' }}
+                      </span>
+                      <span class="importance-pill">★ Importance {{ mem.importance }}</span>
+                      <span class="date-label">{{ mem.created_at | date:'short' }}</span>
+
+                      <div class="mem-item-actions">
+                        <button
+                          class="btn-promote"
+                          [class.is-global]="mem.scope === 'user'"
+                          (click)="toggleMemoryScope(mem)"
+                          [title]="mem.scope === 'session' ? 'Promote to User-Global so all sessions can recall this memory' : 'Demote back to Session-only scope'"
+                        >
+                          {{ mem.scope === 'session' ? '⬆️ Promote to User-Global' : '⬇️ Demote to Session' }}
+                        </button>
+                        <button
+                          class="icon-btn-sm"
+                          (click)="startEditMemory(mem)"
+                          title="Edit memory text or importance"
+                        >
+                          ✏️
+                        </button>
+                        <button
+                          class="icon-btn-sm danger"
+                          (click)="deleteEpisodicMemory(mem.id)"
+                          title="Delete memory and vector embedding"
+                        >
+                          🗑️
+                        </button>
+                      </div>
+                    </div>
+
+                    @if (editingMemoryId() === mem.id) {
+                      <div class="mem-edit-form">
+                        <textarea
+                          class="modal-textarea"
+                          rows="2"
+                          [ngModel]="editingMemoryText()"
+                          (ngModelChange)="editingMemoryText.set($event)"
+                        ></textarea>
+                        <div class="mem-edit-bar">
+                          <label class="imp-inline-label">
+                            Importance:
+                            <select
+                              class="modal-select imp-select-sm"
+                              [ngModel]="editingMemoryImportance()"
+                              (ngModelChange)="editingMemoryImportance.set(+$event)"
+                            >
+                              <option [value]="5">5</option>
+                              <option [value]="4">4</option>
+                              <option [value]="3">3</option>
+                              <option [value]="2">2</option>
+                              <option [value]="1">1</option>
+                            </select>
+                          </label>
+                          <div class="edit-btns">
+                            <button class="btn-sub ghost" (click)="cancelEditMemory()">Cancel</button>
+                            <button class="btn-sub primary" (click)="saveEditMemory(mem.id)">Save &amp; Re-Embed</button>
+                          </div>
+                        </div>
+                      </div>
+                    } @else {
+                      <p class="mem-item-text">{{ mem.memory_text }}</p>
+                    }
+                  </div>
+                }
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn-sub ghost" (click)="showMemoriesModal.set(false)">Close</button>
         </div>
       </div>
     </div>

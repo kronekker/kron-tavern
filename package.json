@@ -20,5 +20,9 @@
   },
   "devDependencies": {
     "concurrently": "^9.2.5"
+  },
+  "allowScripts": {
+    "sharp@0.32.6": true,
+    "protobufjs@6.11.6": true
   }
 }
